@@ -14,10 +14,10 @@ Setup
 Development guidelines
 - Prefer small, focused PRs. Include before/after logs for demos where relevant.
 - Add or update tests for new behavior.
-- For nontrivial changes or tradeoffs, include a DSN (Decision Support Note) in `codex/dsn/` and link it from the PR description.
+- For nontrivial changes or tradeoffs, include a DSN (Decision Support Note) in `codex/dsn/` and link it from the PR description. A DSN template is provided.
 - Avoid committing large binaries; use SafeTensors for model artifacts when necessary.
 
 Release checklist
 - Ensure `pyproject.toml` version is updated.
-- Confirm CI is green on macOS (MLX) and Ubuntu (non‑MLX tests skip).
+- Confirm CI is green on macOS (MLX).
 - Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`.
