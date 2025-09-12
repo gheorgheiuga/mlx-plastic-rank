@@ -1,0 +1,88 @@
+# --------------------
+# Python
+# --------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# --------------------
+# Build / Packaging
+# --------------------
+build/
+dist/
+wheels/
+*.egg-info/
+.eggs/
+MANIFEST
+
+# --------------------
+# Virtual environments
+# --------------------
+.venv/
+env/
+venv/
+ENV/
+
+# --------------------
+# Logs / Coverage / Tests
+# --------------------
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+htmlcov/
+
+# --------------------
+# Type checker / Linter
+# --------------------
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.dmypy.json
+dmypy.json
+
+# --------------------
+# Jupyter
+# --------------------
+.ipynb_checkpoints
+
+# --------------------
+# Editors / IDEs
+# --------------------
+.vscode/
+.idea/
+*.swp
+*~
+*.swo
+
+# --------------------
+# OS-specific
+# --------------------
+.DS_Store
+Thumbs.db
+
+# --------------------
+# Project-specific
+# --------------------
+# Keep uv.lock for reproducibility. Remove if you prefer looser dependency constraints.
+# uv.lock
+
+# Ignore private research artifacts
+codex/private/
+codex/research/**/*.pdf
+codex/research/**/*.djvu
+codex/research/**/*.zip
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+*.safetensors
+out/
+.DS_Store

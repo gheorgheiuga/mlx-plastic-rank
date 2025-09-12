@@ -1,0 +1,46 @@
+[project]
+name = "mlx-plastic-rank"
+version = "0.1.0"
+description = "mlx-plastic-rank: experimental toolkit for adaptive low-rank layers and neuroplastic compression for Apple MLX"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Gheorghe Iuga" },
+]
+requires-python = ">=3.13"
+dependencies = [
+    "mlx>=0.20.0",
+    "numpy",
+    "sympy",
+    "safetensors",
+]
+
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.optional-dependencies]
+# Extras for compression utilities and HF downloading
+compress = [
+    "huggingface_hub>=0.23",
+    "tqdm>=4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "ruff",
+    "mypy",
+    "pytest-cov",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
