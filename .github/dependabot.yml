@@ -1,0 +1,42 @@
+version: 2
+
+updates:
+  # Python deps from pyproject.toml (managed with uv/pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "07:00"
+      timezone: "UTC"
+    # Keep PR volume reasonable
+    open-pull-requests-limit: 5
+    labels: ["deps"]
+    commit-message:
+      prefix: "deps(pip)"
+      include: "scope"
+    # Group routine updates together to reduce noise
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+        patterns: ["*"]
+    # MLX can have breaking changes across majors; avoid surprise bumps
+    ignore:
+      - dependency-name: "mlx"
+        update-types: ["version-update:semver-major"]
+
+  # Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "07:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels: ["deps", "ci"]
+    commit-message:
+      prefix: "deps(actions)"
+      include: "scope"
+
