@@ -1,9 +1,20 @@
-"""Rank selection heuristics and stability metrics."""
-from typing import Tuple, Union
-import mlx.core as mx
-from .lowrank import svd_lowrank
+"""Rank selection heuristics and stability metrics.
 
-ArrayLike = Union[mx.array]
+This module purposely uses NumPy for singular-value computations so rank
+selection never triggers large MLX/Metal allocations. The actual low‑rank
+reconstruction during compression can still use MLX.
+"""
+from typing import Tuple, Union
+import numpy as np
+import mlx.core as mx  # for type annotations only
+
+ArrayLike = Union[np.ndarray, mx.array]
+
+def _to_numpy_f32(A: ArrayLike) -> np.ndarray:
+    if isinstance(A, np.ndarray):
+        return A.astype(np.float32, copy=False)
+    # Fall back to array protocol
+    return np.array(A, dtype=np.float32)
 
 
 def stable_rank(A: ArrayLike, eps: float = 1e-6) -> float:
@@ -11,25 +22,26 @@ def stable_rank(A: ArrayLike, eps: float = 1e-6) -> float:
 
     stable_rank(A) = ||A||_F^2 / (sigma_max(A)^2 + eps)
 
-    - Uses MLX SVD without computing U/V for efficiency.
+    - Uses NumPy SVD without computing U/V for efficiency.
     - Adds a small `eps` to guard degenerate cases.
     """
-    s = mx.linalg.svd(A, compute_uv=False, stream=mx.cpu)
-    fro2 = mx.square(A).sum()
-    denom = s[0] * s[0] + eps
+    A_np = _to_numpy_f32(A)
+    s = np.linalg.svd(A_np, compute_uv=False)
+    fro2 = float(np.square(A_np).sum())
+    denom = float(s[0] * s[0] + eps)
     return float(fro2 / denom)
 
 
-def _numerical_rank(M: mx.array, eps: float = 1e-6) -> int:
-    s = mx.linalg.svd(M, compute_uv=False, stream=mx.cpu)
+def _numerical_rank(M: ArrayLike, eps: float = 1e-6) -> int:
+    s = np.linalg.svd(_to_numpy_f32(M), compute_uv=False)
     if s.size == 0:
         return 0
-    thr = s[0] * eps
-    return int(mx.sum(s > thr))
+    thr = float(s[0] * eps)
+    return int((s > thr).sum())
 
 
 def theorem_guided_rank(
-    A: mx.array, target_compression: float = 0.9, eps: float = 1e-6, tol: float = 1.0
+    A: ArrayLike, target_compression: float = 0.9, eps: float = 1e-6, tol: float = 1.0
 ) -> Tuple[int, float]:
     """Select a rank guided by a simple polynomial rank identity.
 
@@ -44,26 +56,29 @@ def theorem_guided_rank(
 
     Returns (r, residual).
     """
-    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+    A_np = _to_numpy_f32(A)
+    if A_np.ndim != 2 or A_np.shape[0] != A_np.shape[1]:
         raise ValueError("theorem_guided_rank expects a square 2D matrix")
 
     # singular values of A
-    s = mx.linalg.svd(A, compute_uv=False, stream=mx.cpu)
+    s = np.linalg.svd(A_np, compute_uv=False)
     s2 = s * s
-    total = mx.sum(s2)
-    cdf = mx.cumsum(s2) / (total + 1e-12)
+    total = float(s2.sum())
+    cdf = np.cumsum(s2) / (total + 1e-12) if total != 0 else np.array([], dtype=np.float32)
     if cdf.size == 0:
         r = 1
     else:
         cvals = cdf.tolist()
-        r0 = next((i + 1 for i, v in enumerate(cvals) if v >= float(target_compression)), min(A.shape))
-        r = max(1, min(int(r0), min(A.shape)))
+        r0 = next((i + 1 for i, v in enumerate(cvals) if v >= float(target_compression)), min(A_np.shape))
+        r = max(1, min(int(r0), min(A_np.shape)))
 
-    full = min(A.shape)
+    full = min(A_np.shape)
     residual = float("inf")
     while r <= full:
-        A_r = svd_lowrank(A, r)
-        I = mx.eye(A.shape[0])
+        # NumPy truncated SVD for reconstruction on CPU
+        U, S, Vh = np.linalg.svd(A_np, full_matrices=False)
+        A_r = (U[:, :r] * S[:r][None, :]) @ Vh[:r, :]
+        I = np.eye(A_np.shape[0], dtype=np.float32)
         # Horner-evaluated polynomials
         fA = A_r
         gA = A_r @ (A_r - I)  # x(x-1)
@@ -82,20 +97,21 @@ def theorem_guided_rank(
     return r, float(residual)
 
 
-def _energy_rank(A: mx.array, target_compression: float) -> int:
-    s = mx.linalg.svd(A, compute_uv=False, stream=mx.cpu)
+def _energy_rank(A: ArrayLike, target_compression: float) -> int:
+    A_np = _to_numpy_f32(A)
+    s = np.linalg.svd(A_np, compute_uv=False)
     s2 = s * s
-    total = mx.sum(s2)
+    total = float(s2.sum())
     if total == 0:
         return 1
-    cdf = mx.cumsum(s2) / (total + 1e-12)
+    cdf = np.cumsum(s2) / (total + 1e-12)
     vals = cdf.tolist()
-    r0 = next((i + 1 for i, v in enumerate(vals) if v >= float(target_compression)), min(A.shape))
-    return max(1, min(int(r0), min(A.shape)))
+    r0 = next((i + 1 for i, v in enumerate(vals) if v >= float(target_compression)), min(A_np.shape))
+    return max(1, min(int(r0), min(A_np.shape)))
 
 
 def choose_rank(
-    A: mx.array,
+    A: ArrayLike,
     target_compression: float,
     strategy: str,
     eps: float = 1e-6,

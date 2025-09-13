@@ -47,6 +47,7 @@ def randomized_svd(
     p: int = 8,
     q: int = 1,
     device_stream=None,
+    chunk_k: int | None = None,
 ) -> Tuple[mx.array, mx.array, mx.array]:
     """Randomized SVD for memory-friendly top-``r`` factorization.
 
@@ -77,19 +78,41 @@ def randomized_svd(
     k = int(min(m, n, max(r, 1) + max(p, 0)))
 
     ctx = device_stream or _cpu_stream()
-    # 1) random projection and optional power iterations on chosen device
+    # Heuristic chunk size along the projection dimension to avoid long-running
+    # GPU kernels that can trip the macOS Metal watchdog (timeout). Small chunks
+    # keep command buffers short without materially changing math.
+    # Always at least 32, at most k.
+    # Allow caller to override chunk size; default to a conservative 64 to
+    # avoid long Metal command buffers on macOS.
+    if chunk_k is None or chunk_k <= 0:
+        chunk = max(32, min(64, int(k)))
+    else:
+        chunk = max(16, min(int(k), int(chunk_k)))
+
+    # 1) Random projection and optional power iterations on chosen device.
+    # Compute in chunks along the k dimension to bound single-kernel runtime.
     with ctx:
-        Omega = mx.random.normal((n, k))
-        Y = A @ Omega  # (m, k)
-        for _ in range(max(0, q)):
-            Y = A @ (A.T @ Y)
+        Y_blocks = []
+        for j in range(0, int(k), chunk):
+            jj = min(int(k) - j, chunk)
+            Omega_j = mx.random.normal((n, jj))
+            Y_j = A @ Omega_j  # (m, jj)
+            for _ in range(max(0, q)):
+                Y_j = A @ (A.T @ Y_j)
+            Y_blocks.append(Y_j)
+        Y = mx.concatenate(Y_blocks, axis=1)  # (m, k)
     # 3) SVD(Y) on CPU to avoid GPU unsupported op / huge workspace
     with _cpu_stream():
         Uy, _, _ = mx.linalg.svd(Y)
     with ctx:
         Q = Uy[:, :k]  # (m, k)
-        # 4) project and do SVD on CPU
-        B = Q.T @ A  # (k, n)
+        # 4) Project to reduced space. Build B in row-chunks to keep kernels small.
+        B_rows = []
+        for j in range(0, int(k), chunk):
+            jj = min(int(k) - j, chunk)
+            Qt_block = Q[:, j : j + jj].T  # (jj, m)
+            B_rows.append(Qt_block @ A)  # (jj, n)
+        B = mx.concatenate(B_rows, axis=0)  # (k, n)
     # 4b) SVD(B) on CPU
     with _cpu_stream():
         Ub, s, Vh = mx.linalg.svd(B)
@@ -129,6 +152,7 @@ def svd_lowrank_randomized(
     n_oversamples: int = 8,
     n_iter: int = 1,
     device_stream=None,
+    chunk_k: int | None = None,
 ) -> mx.array:
     """Return ``A``'s rank-``r`` approximation using randomized SVD.
 
@@ -136,7 +160,14 @@ def svd_lowrank_randomized(
     is provided, heavy ops execute inside that context; otherwise a CPU stream
     is used when available.
     """
-    U, S, Vh = randomized_svd(A, r, p=n_oversamples, q=n_iter, device_stream=device_stream)
+    U, S, Vh = randomized_svd(
+        A,
+        r,
+        p=n_oversamples,
+        q=n_iter,
+        device_stream=device_stream,
+        chunk_k=chunk_k,
+    )
     return (U * S[None, :]) @ Vh
 
 

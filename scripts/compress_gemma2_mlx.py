@@ -4,6 +4,7 @@ import struct
 from pathlib import Path
 
 import mlx.core as mx
+import numpy as np
 from contextlib import nullcontext
 from tqdm import tqdm
 from huggingface_hub import snapshot_download
@@ -36,10 +37,9 @@ def pick_rank(A_np, target_energy: float, strategy: str, eps: float) -> int:
     """
     m, n = A_np.shape
     used_strategy = strategy if (m == n) else "stable"
-    with _cpu_stream():
-        # Ensure MLX float32 for stable SVD behavior
-        A = mx.array(A_np, dtype=mx.float32)
-        r, _ = choose_rank(A, target_energy, strategy=used_strategy, eps=eps)
+    # Use NumPy inside choose_rank to avoid large MLX allocations
+    A = np.asarray(A_np, dtype=np.float32)
+    r, _ = choose_rank(A, target_energy, strategy=used_strategy, eps=eps)
     return int(max(1, min(int(r), min(m, n))))
 
 
@@ -51,6 +51,7 @@ def mlx_svd_truncate(
     oversamples: int,
     iters: int,
     device: str,
+    gpu_chunk_k: int | None = None,
 ) -> object:
     """Return a rank-r approximation of A_np using MLX.
 
@@ -61,13 +62,25 @@ def mlx_svd_truncate(
     with stream:
         A = mx.array(A_np, dtype=mx.float32)
         if svd_kind == "randomized":
-            A_r = svd_lowrank_randomized(
-                A, r, n_oversamples=oversamples, n_iter=iters, device_stream=stream
-            )
-            # Convert to NumPy via __array__ interface for safetensors IO
-            import numpy as np
+            try:
+                A_r = svd_lowrank_randomized(
+                    A,
+                    r,
+                    n_oversamples=oversamples,
+                    n_iter=iters,
+                    device_stream=stream,
+                    chunk_k=gpu_chunk_k,
+                )
+                # Convert to NumPy via __array__ interface for safetensors IO
+                import numpy as np
 
-            return np.array(A_r)
+                return np.array(A_r)
+            except Exception as e:
+                # Fallback to CPU on any GPU/Metal related error
+                from tqdm import tqdm as _tqdm
+
+                _tqdm.write(f"[GPU->CPU fallback] rSVD failed on GPU: {e}")
+                pass
     # Full SVD on CPU
     with _cpu_stream():
         U, S, Vh = mx.linalg.svd(A)
@@ -107,6 +120,8 @@ def compress_safetensors_file(
     device: str,
     gpu_max_bytes: int,
     max_rank: int | None,
+    gpu_chunk_k: int | None,
+    gpu_max_dim: int,
 ):
     # Skip files containing BF16 tensors by copying them as-is (no NumPy involved)
     if _file_contains_bf16(in_path):
@@ -130,7 +145,14 @@ def compress_safetensors_file(
             if svd_kind == "randomized" and device == "gpu":
                 m, n = map(int, arr.shape)
                 k = int(min(min(m, n), r + svd_oversamples))
-                if _estimate_bytes(m, n, k) > gpu_max_bytes:
+                # Consider both rSVD working set AND the cost of staging A on GPU.
+                # If either exceeds the threshold, keep this tensor on CPU.
+                A_bytes = 4 * m * n  # FP32 bytes
+                if (
+                    _estimate_bytes(m, n, k) > gpu_max_bytes
+                    or A_bytes > gpu_max_bytes
+                    or max(m, n) > gpu_max_dim
+                ):
                     local_device = "cpu"
             arr_c = mlx_svd_truncate(
                 arr,
@@ -139,6 +161,7 @@ def compress_safetensors_file(
                 oversamples=svd_oversamples,
                 iters=svd_iters,
                 device=local_device,
+                gpu_chunk_k=(gpu_chunk_k if local_device == "gpu" else None),
             ).astype(arr.dtype, copy=False)
             out[name] = arr_c
             changed += 1
@@ -163,7 +186,24 @@ def main():
     ap.add_argument("--svd-oversamples", type=int, default=10)
     ap.add_argument("--svd-iters", type=int, default=2)
     ap.add_argument("--device", choices=["cpu", "gpu"], default="gpu", help="matmuls device; SVD runs on CPU")
-    ap.add_argument("--gpu-max-bytes", type=int, default=2_000_000_000, help="fallback to CPU if projected rSVD working set exceeds this")
+    ap.add_argument(
+        "--gpu-max-bytes",
+        type=int,
+        default=1_000_000_000,
+        help="max bytes allowed for GPU work; if exceeded, use CPU for this tensor",
+    )
+    ap.add_argument(
+        "--gpu-chunk-k",
+        type=int,
+        default=32,
+        help="chunk size for GPU matmuls in rSVD; lower to avoid Metal timeouts",
+    )
+    ap.add_argument(
+        "--gpu-max-dim",
+        type=int,
+        default=4096,
+        help="largest dimension allowed on GPU; larger matrices stay on CPU",
+    )
     ap.add_argument("--max-rank", type=int, default=None, help="cap chosen rank across tensors")
     args = ap.parse_args()
 
@@ -207,6 +247,8 @@ def main():
             args.device,
             args.gpu_max_bytes,
             args.max_rank,
+            args.gpu_chunk_k,
+            args.gpu_max_dim,
         )
         changed_total += changed
         total_params += total
@@ -221,6 +263,8 @@ def main():
         "svd_oversamples": args.svd_oversamples,
         "svd_iters": args.svd_iters,
         "device": args.device,
+        "gpu_chunk_k": args.gpu_chunk_k,
+        "gpu_max_dim": args.gpu_max_dim,
     }
     (dst_dir / "mlx_plastic_rank_meta.json").write_text(json.dumps(meta, indent=2))
     print(f"Done. Output at {dst_dir}")
