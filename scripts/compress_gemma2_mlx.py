@@ -59,9 +59,11 @@ def mlx_svd_truncate(
     - "full": computes a full SVD on the CPU stream and truncates.
     """
     stream = _device_stream(device)
-    with stream:
-        A = mx.array(A_np, dtype=mx.float32)
-        if svd_kind == "randomized":
+    # Randomized SVD path — compute on requested device, but ensure that any
+    # CPU fallback re-allocates the array on CPU instead of reusing a GPU array.
+    if svd_kind == "randomized":
+        with stream:
+            A = mx.array(A_np, dtype=mx.float32)
             try:
                 A_r = svd_lowrank_randomized(
                     A,
@@ -71,19 +73,29 @@ def mlx_svd_truncate(
                     device_stream=stream,
                     chunk_k=gpu_chunk_k,
                 )
-                # Convert to NumPy via __array__ interface for safetensors IO
                 import numpy as np
 
                 return np.array(A_r)
             except Exception as e:
-                # Fallback to CPU on any GPU/Metal related error
+                # Fallback to CPU on any GPU/Metal related error. Recreate the
+                # array on CPU to avoid cross-device ops which can crash MLX.
                 from tqdm import tqdm as _tqdm
 
-                _tqdm.write(f"[GPU->CPU fallback] rSVD failed on GPU: {e}")
-                pass
-    # Full SVD on CPU
+                _tqdm.write(f"[GPU->CPU fallback] rSVD failed on {device}: {e}")
+        # CPU fallback (fresh CPU allocation)
+        with _cpu_stream():
+            A_cpu = mx.array(A_np, dtype=mx.float32)
+            U, S, Vh = mx.linalg.svd(A_cpu)
+            U_r, S_r, Vh_r = U[:, :r], S[:r], Vh[:r, :]
+            A_r = (U_r * S_r[None, :]) @ Vh_r
+        import numpy as np
+        return np.array(A_r)
+
+    # Full SVD forced on CPU regardless of requested device (more stable and
+    # avoids large/unsupported GPU SVD workspaces). Always allocate on CPU.
     with _cpu_stream():
-        U, S, Vh = mx.linalg.svd(A)
+        A_cpu = mx.array(A_np, dtype=mx.float32)
+        U, S, Vh = mx.linalg.svd(A_cpu)
         U_r, S_r, Vh_r = U[:, :r], S[:r], Vh[:r, :]
         A_r = (U_r * S_r[None, :]) @ Vh_r
     import numpy as np
