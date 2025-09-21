@@ -36,36 +36,6 @@ def _resolve_target(name: str) -> str:
     return LORA_ALIAS_MAP.get(canonical, canonical)
 
 
-def parse_int_map(raw: str | None) -> Dict[str, int]:
-    mapping: Dict[str, int] = {}
-    if not raw:
-        return mapping
-    for part in raw.split(","):
-        if not part.strip():
-            continue
-        if ":" not in part:
-            raise SystemExit(f"Invalid map entry '{part}'")
-        key, value = part.split(":", 1)
-        target = _resolve_target(key)
-        mapping[target] = int(value)
-    return mapping
-
-
-def parse_float_map(raw: str | None) -> Dict[str, float]:
-    mapping: Dict[str, float] = {}
-    if not raw:
-        return mapping
-    for part in raw.split(","):
-        if not part.strip():
-            continue
-        if ":" not in part:
-            raise SystemExit(f"Invalid map entry '{part}'")
-        key, value = part.split(":", 1)
-        target = _resolve_target(key)
-        mapping[target] = float(value)
-    return mapping
-
-
 def _evaluate_perplexity(model, dataset: mx.array, batch_size: int) -> Dict[str, float]:
     if dataset.shape[0] == 0:
         raise ValueError("Dataset is empty")
@@ -134,55 +104,23 @@ def cmd_create(args: argparse.Namespace) -> None:
     if disallowed:
         raise SystemExit(f"Unsupported LoRA targets: {disallowed}. Only q,k,v projections are allowed.")
 
-    rank_map = parse_int_map(args.rank_map)
-    alpha_map = parse_float_map(args.alpha_map)
-    extra_rank_targets = set(rank_map) - set(canonical_layers)
-    if extra_rank_targets:
-        raise SystemExit(f"Rank map includes unused targets: {sorted(extra_rank_targets)}")
-    extra_alpha_targets = set(alpha_map) - set(canonical_layers)
-    if extra_alpha_targets:
-        raise SystemExit(f"Alpha map includes unused targets: {sorted(extra_alpha_targets)}")
+    auto_rank_map, auto_alpha_map, residuals = manager.compute_auto_ranks(
+        canonical_layers,
+        strategy="theorem",
+        target_compression=args.target_compression,
+        eps=args.rank_eps,
+    )
+    print("Auto-selected ranks (Pop theorem):")
+    rank_map: Dict[str, int] = {}
+    alpha_map: Dict[str, float] = {}
+    for target in canonical_layers:
+        rank_map[target] = auto_rank_map[target]
+        alpha_map[target] = auto_alpha_map[target]
+        res = residuals[target]
+        print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
 
-    base_rank = args.rank
-    base_alpha = args.alpha
-    if args.rank_strategy == "manual":
-        if args.rank not in ALLOWED_RANKS:
-            raise SystemExit(f"LoRA rank must be one of {sorted(ALLOWED_RANKS)}, got {args.rank}")
-        expected_alpha = 2.0 * args.rank
-        if not math.isclose(args.alpha, expected_alpha, rel_tol=1e-6, abs_tol=1e-6):
-            raise SystemExit(f"Alpha must equal 2 * rank ({expected_alpha}), got {args.alpha}")
-        for target in canonical_layers:
-            local_rank = rank_map.get(target, args.rank)
-            if local_rank not in ALLOWED_RANKS:
-                raise SystemExit(
-                    f"LoRA rank for {target} must be one of {sorted(ALLOWED_RANKS)}, got {local_rank}"
-                )
-            target_expected_alpha = 2.0 * local_rank
-            provided_alpha = alpha_map.get(target, args.alpha)
-            if not math.isclose(provided_alpha, target_expected_alpha, rel_tol=1e-6, abs_tol=1e-6):
-                raise SystemExit(
-                    f"Alpha for {target} must equal 2 * rank ({target_expected_alpha}), got {provided_alpha}"
-                )
-            alpha_map[target] = target_expected_alpha
-            rank_map[target] = local_rank
-        base_alpha = expected_alpha
-    else:
-        if args.rank_map or args.alpha_map:
-            raise SystemExit("Cannot combine --rank-map/--alpha-map with --rank-strategy")
-        auto_rank_map, auto_alpha_map, residuals = manager.compute_auto_ranks(
-            canonical_layers,
-            strategy=args.rank_strategy,
-            target_compression=args.target_compression,
-            eps=args.rank_eps,
-        )
-        print("Auto-selected ranks:")
-        for target in canonical_layers:
-            rank_map[target] = auto_rank_map[target]
-            alpha_map[target] = auto_alpha_map[target]
-            res = residuals[target]
-            print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
-        base_rank = rank_map.get("attn.q_proj", next(iter(rank_map.values())))
-        base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
+    base_rank = rank_map.get("attn.q_proj", next(iter(rank_map.values())))
+    base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
 
     print(f"Initialising adapters on layers: {canonical_layers}")
     adapters = manager.initialize_adapters(
@@ -615,16 +553,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Base model path or ID (e.g. qwen3-4b-2507-mlx-4bit, qwen3-4b-thinking-2507-mlx-4bit, llama-3-8b-instruct-mlx-4bit)",
     )
     create.add_argument("--layers", default="attn.q_proj,attn.k_proj,attn.v_proj")
-    create.add_argument("--rank", type=int, default=8, help="Base rank when using manual strategy")
-    create.add_argument("--rank-map", type=str, help="Per-target ranks, e.g. q:8,k:4,v:8")
-    create.add_argument("--alpha", type=float, default=16.0)
-    create.add_argument("--alpha-map", type=str, help="Per-target alpha, e.g. q:16,k:8,v:16")
-    create.add_argument(
-        "--rank-strategy",
-        choices=["manual", "stable", "theorem"],
-        default="manual",
-        help="Automatic rank selection strategy",
-    )
     create.add_argument(
         "--target-compression",
         type=float,
