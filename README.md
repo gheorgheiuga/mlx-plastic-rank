@@ -30,7 +30,7 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 5. Execute the plasticity demo: `uv run python plastic_rank.py --steps 10`
 
 ## LoRA Skill Packs
-- Train a pack: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank 8 --alpha 16 --data data/domain_prompts.jsonl --steps 1000 --lr 1e-4 --lora-dropout 0.05`
+- Train a pack: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`
   
   Qwen3 4-bit checkpoints stay quantized end-to-end; per-slice ranks adjust automatically (`q` uses the requested rank, `k/v` default to the grouped head width). Add `--train-fp16-fallback` if a projection fails geometry checks.
 - Inspect metadata: `uv run packs inspect --name domain-demo`

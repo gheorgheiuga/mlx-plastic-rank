@@ -143,31 +143,52 @@ def cmd_create(args: argparse.Namespace) -> None:
     if extra_alpha_targets:
         raise SystemExit(f"Alpha map includes unused targets: {sorted(extra_alpha_targets)}")
 
-    if args.rank not in ALLOWED_RANKS:
-        raise SystemExit(f"LoRA rank must be one of {sorted(ALLOWED_RANKS)}, got {args.rank}")
-    expected_alpha = 2.0 * args.rank
-    if not math.isclose(args.alpha, expected_alpha, rel_tol=1e-6, abs_tol=1e-6):
-        raise SystemExit(f"Alpha must equal 2 * rank ({expected_alpha}), got {args.alpha}")
-
-    for target in canonical_layers:
-        local_rank = rank_map.get(target, args.rank)
-        if local_rank not in ALLOWED_RANKS:
-            raise SystemExit(f"LoRA rank for {target} must be one of {sorted(ALLOWED_RANKS)}, got {local_rank}")
-        target_expected_alpha = 2.0 * local_rank
-        provided_alpha = alpha_map.get(target, args.alpha)
-        if not math.isclose(provided_alpha, target_expected_alpha, rel_tol=1e-6, abs_tol=1e-6):
-            raise SystemExit(
-                f"Alpha for {target} must equal 2 * rank ({target_expected_alpha}), got {provided_alpha}"
-            )
-        alpha_map[target] = target_expected_alpha
-        rank_map[target] = local_rank
-    args.alpha = expected_alpha
+    base_rank = args.rank
+    base_alpha = args.alpha
+    if args.rank_strategy == "manual":
+        if args.rank not in ALLOWED_RANKS:
+            raise SystemExit(f"LoRA rank must be one of {sorted(ALLOWED_RANKS)}, got {args.rank}")
+        expected_alpha = 2.0 * args.rank
+        if not math.isclose(args.alpha, expected_alpha, rel_tol=1e-6, abs_tol=1e-6):
+            raise SystemExit(f"Alpha must equal 2 * rank ({expected_alpha}), got {args.alpha}")
+        for target in canonical_layers:
+            local_rank = rank_map.get(target, args.rank)
+            if local_rank not in ALLOWED_RANKS:
+                raise SystemExit(
+                    f"LoRA rank for {target} must be one of {sorted(ALLOWED_RANKS)}, got {local_rank}"
+                )
+            target_expected_alpha = 2.0 * local_rank
+            provided_alpha = alpha_map.get(target, args.alpha)
+            if not math.isclose(provided_alpha, target_expected_alpha, rel_tol=1e-6, abs_tol=1e-6):
+                raise SystemExit(
+                    f"Alpha for {target} must equal 2 * rank ({target_expected_alpha}), got {provided_alpha}"
+                )
+            alpha_map[target] = target_expected_alpha
+            rank_map[target] = local_rank
+        base_alpha = expected_alpha
+    else:
+        if args.rank_map or args.alpha_map:
+            raise SystemExit("Cannot combine --rank-map/--alpha-map with --rank-strategy")
+        auto_rank_map, auto_alpha_map, residuals = manager.compute_auto_ranks(
+            canonical_layers,
+            strategy=args.rank_strategy,
+            target_compression=args.target_compression,
+            eps=args.rank_eps,
+        )
+        print("Auto-selected ranks:")
+        for target in canonical_layers:
+            rank_map[target] = auto_rank_map[target]
+            alpha_map[target] = auto_alpha_map[target]
+            res = residuals[target]
+            print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
+        base_rank = rank_map.get("attn.q_proj", next(iter(rank_map.values())))
+        base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
 
     print(f"Initialising adapters on layers: {canonical_layers}")
     adapters = manager.initialize_adapters(
         canonical_layers,
-        rank=args.rank,
-        alpha=args.alpha,
+        rank=base_rank,
+        alpha=base_alpha,
         seed=args.seed,
         rank_map=rank_map,
         alpha_map=alpha_map,
@@ -594,10 +615,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Base model path or ID (e.g. qwen3-4b-2507-mlx-4bit, qwen3-4b-thinking-2507-mlx-4bit, llama-3-8b-instruct-mlx-4bit)",
     )
     create.add_argument("--layers", default="attn.q_proj,attn.k_proj,attn.v_proj")
-    create.add_argument("--rank", type=int, default=8)
+    create.add_argument("--rank", type=int, default=8, help="Base rank when using manual strategy")
     create.add_argument("--rank-map", type=str, help="Per-target ranks, e.g. q:8,k:4,v:8")
     create.add_argument("--alpha", type=float, default=16.0)
     create.add_argument("--alpha-map", type=str, help="Per-target alpha, e.g. q:16,k:8,v:16")
+    create.add_argument(
+        "--rank-strategy",
+        choices=["manual", "stable", "theorem"],
+        default="manual",
+        help="Automatic rank selection strategy",
+    )
+    create.add_argument(
+        "--target-compression",
+        type=float,
+        default=0.9,
+        help="Energy fraction for automatic rank selection",
+    )
+    create.add_argument(
+        "--rank-eps",
+        type=float,
+        default=1e-6,
+        help="Tolerance for theorem-guided rank selection",
+    )
     create.add_argument("--data", required=True)
     create.add_argument("--steps", type=int, default=1500)
     create.add_argument("--batch-size", type=int, default=4)

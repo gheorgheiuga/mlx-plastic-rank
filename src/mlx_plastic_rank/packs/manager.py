@@ -14,6 +14,7 @@ import numpy as np
 from .inspection import ALLOWED_RANKS, MAX_PACK_BYTES, size_limit_for
 from .io import PackMetadata, compute_sha256, load_pack, load_pack_metadata
 from .lora import SLICE_MAP, LoRAFusedLinear, SliceLoRA
+from ..rank_select import choose_rank
 
 
 class PackApplicationError(RuntimeError):
@@ -96,6 +97,21 @@ def _linear_input_dim(linear) -> int:
         factor = 32 // bits
         return int(weight.shape[1]) * factor
     return int(weight.shape[1])
+
+
+def _linear_weight_array(linear) -> mx.array:
+    if _is_quantized_linear(linear):
+        biases = linear.get("biases") if isinstance(linear, dict) else getattr(linear, "biases", None)
+        weight = mx.dequantize(
+            linear.weight,
+            linear.scales,
+            biases,
+            group_size=getattr(linear, "group_size", 64),
+            bits=getattr(linear, "bits", 4),
+            mode=getattr(linear, "mode", "affine"),
+        )
+        return weight.astype(mx.float32)
+    return linear.weight.astype(mx.float32)
 
 
 class LoRAManager:
@@ -344,6 +360,56 @@ class LoRAManager:
         self.set_dropout(0.0)
         self._adapter_registry.clear()
         self._active_pack = None
+
+    # ------------------------------------------------------------------
+    # Rank selection helpers
+    # ------------------------------------------------------------------
+    def compute_auto_ranks(
+        self,
+        targets: List[str],
+        *,
+        strategy: str,
+        target_compression: float,
+        eps: float = 1e-6,
+    ) -> Tuple[Dict[str, int], Dict[str, float], Dict[str, float]]:
+        if strategy not in {"stable", "theorem"}:
+            raise PackApplicationError(f"Unsupported rank strategy '{strategy}'")
+        if not targets:
+            raise PackApplicationError("No targets specified for auto rank selection")
+
+        block0 = self._blocks()[0]
+        rank_map: Dict[str, int] = {}
+        alpha_map: Dict[str, float] = {}
+        residuals: Dict[str, float] = {}
+
+        allowed = sorted(ALLOWED_RANKS)
+
+        for target in targets:
+            spec = self._target_specs.get(target)
+            if spec is None:
+                raise PackApplicationError(f"Target '{target}' not supported for model type '{self.model_type}'")
+            linear = _get_nested_attr(block0, spec.wrapper_attr)
+            weight = _linear_weight_array(linear)
+            mx.eval(weight)
+            slice_weight = weight[spec.start : spec.end, :]
+            matrix = np.array(slice_weight, dtype=np.float32)
+            if matrix.size == 0:
+                raise PackApplicationError(f"Unable to compute rank for empty slice '{target}'")
+            mat_for_rank = matrix
+            if strategy == "theorem":
+                mat_for_rank = matrix @ matrix.T
+            rank, residual = choose_rank(mat_for_rank, target_compression, strategy=strategy, eps=eps)
+            if rank <= 0:
+                rank = allowed[0]
+            selected = allowed[-1]
+            for candidate in allowed:
+                if candidate >= rank:
+                    selected = candidate
+                    break
+            rank_map[target] = selected
+            alpha_map[target] = 2.0 * selected
+            residuals[target] = float(residual)
+        return rank_map, alpha_map, residuals
 
     # ------------------------------------------------------------------
     # Training preparation
