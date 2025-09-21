@@ -1,8 +1,8 @@
 import argparse
+
 import mlx.core as mx
 
 from mlx_plastic_rank.lowrank import factorized_lowrank
-from mlx_plastic_rank.export_safetensors import pack_lowrank
 
 
 def estimate_dense_bytes(m: int, n: int) -> int:
@@ -21,7 +21,6 @@ def run_once(m: int, n: int, r: int) -> tuple[int, int, float]:
     A = mx.random.normal((m, n))
     U, S, Vh = factorized_lowrank(A, r)
     A_r = (U * S[None, :]) @ Vh
-    packed = pack_lowrank(U, S, Vh, bits=8)
     # Error measured between A and its rank-r approximation
     rel = float(mx.linalg.norm(A - A_r) / mx.linalg.norm(A))
     dense = estimate_dense_bytes(m, n)

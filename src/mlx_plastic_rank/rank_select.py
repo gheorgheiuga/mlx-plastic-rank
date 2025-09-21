@@ -5,8 +5,9 @@ selection never triggers large MLX/Metal allocations. The actual low‑rank
 reconstruction during compression can still use MLX.
 """
 from typing import Tuple, Union
-import numpy as np
+
 import mlx.core as mx  # for type annotations only
+import numpy as np
 
 ArrayLike = Union[np.ndarray, mx.array]
 

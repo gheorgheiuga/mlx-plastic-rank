@@ -1,5 +1,5 @@
+
 import mlx.core as mx
-from typing import Tuple
 
 
 def set_seed(seed: int) -> None:

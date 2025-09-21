@@ -1,23 +1,4 @@
-"""
-mlx_plastic_rank package
-
-Exports core primitives:
-- RankLayer, PlasticBlock (low-rank, reversible layers)
-- PlasticityManager (plasticity triggers and sleep store)
-- stable_rank (rank heuristic)
-- SVD helpers (factorized_lowrank, svd_lowrank)
-"""
-from .rank_select import stable_rank, theorem_guided_rank  # noqa: F401
-from .lowrank import (
-    RankLayer,
-    PlasticBlock,
-    factorized_lowrank,
-    svd_lowrank,
-    quantize_factors,
-    dequantize_factors,
-)  # noqa: F401
-from .plasticity_manager import PlasticityManager  # noqa: F401
-from .utils import quantise, dequantise, set_seed, get_logger  # noqa: F401
+"""mlx_plastic_rank package core exports (lazy imported)."""
 
 __all__ = [
     "stable_rank",
@@ -34,3 +15,49 @@ __all__ = [
     "set_seed",
     "get_logger",
 ]
+
+
+def __getattr__(name: str):
+    if name in {
+        "RankLayer",
+        "PlasticBlock",
+        "factorized_lowrank",
+        "svd_lowrank",
+        "quantize_factors",
+        "dequantize_factors",
+    }:
+        from .lowrank import (
+            PlasticBlock,
+            RankLayer,
+            dequantize_factors,
+            factorized_lowrank,
+            quantize_factors,
+            svd_lowrank,
+        )
+
+        return {
+            "RankLayer": RankLayer,
+            "PlasticBlock": PlasticBlock,
+            "factorized_lowrank": factorized_lowrank,
+            "svd_lowrank": svd_lowrank,
+            "quantize_factors": quantize_factors,
+            "dequantize_factors": dequantize_factors,
+        }[name]
+    if name in {"stable_rank", "theorem_guided_rank"}:
+        from .rank_select import stable_rank, theorem_guided_rank
+
+        return {"stable_rank": stable_rank, "theorem_guided_rank": theorem_guided_rank}[name]
+    if name in {"quantise", "dequantise", "set_seed", "get_logger"}:
+        from .utils import dequantise, get_logger, quantise, set_seed
+
+        return {
+            "quantise": quantise,
+            "dequantise": dequantise,
+            "set_seed": set_seed,
+            "get_logger": get_logger,
+        }[name]
+    if name == "PlasticityManager":
+        from .plasticity_manager import PlasticityManager
+
+        return PlasticityManager
+    raise AttributeError(f"module 'mlx_plastic_rank' has no attribute '{name}'")

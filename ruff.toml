@@ -1,4 +1,4 @@
 line-length = 100
-select = ["F401", "F841", "I001", "E701"]
-ignore = []
 
+[lint]
+select = ["F401", "F841", "I001", "E701"]

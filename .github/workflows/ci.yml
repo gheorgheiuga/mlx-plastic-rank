@@ -24,6 +24,12 @@ jobs:
           uv venv
           source .venv/bin/activate
           uv pip install -e .
+      - name: Run ruff
+        run: |
+          uv run ruff check
+      - name: Run mypy
+        run: |
+          uv run mypy
       - name: Run tests
         run: |
           uv run pytest -q

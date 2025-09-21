@@ -13,6 +13,7 @@ dependencies = [
     "numpy",
     "sympy",
     "safetensors",
+    "datasets",
 ]
 
 classifiers = [
@@ -29,6 +30,9 @@ compress = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[project.scripts]
+packs = "mlx_plastic_rank.packs.cli:main"
 
 [tool.uv]
 dev-dependencies = [

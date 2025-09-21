@@ -1,6 +1,7 @@
-import os
 import json
+import os
 import tempfile
+
 import pytest
 
 mx = pytest.importorskip("mlx.core", reason="MLX not installed; skipping")

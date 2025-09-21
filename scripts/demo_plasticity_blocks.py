@@ -1,13 +1,13 @@
 import argparse
 import json
 import os
+
 import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_plastic_rank.lowrank import PlasticBlock
 from mlx_plastic_rank.plasticity_manager import PlasticityManager
 from mlx_plastic_rank.utils import set_seed
-
 
 """
 Toy demo script using PlasticBlock.

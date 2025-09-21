@@ -1,10 +1,10 @@
-from typing import List, Dict, Optional
-import mlx.core as mx
+from typing import Dict, List, Optional
+
 import mlx.nn as nn
 
 from .lowrank import RankLayer
-from .utils import get_logger
 from .rank_select import choose_rank
+from .utils import get_logger
 
 
 class PlasticityManager:
@@ -78,9 +78,6 @@ class PlasticityManager:
     def _plastic_phase(self):
         logger = get_logger()
         for idx, lyr in enumerate(self.layers):
-            # crude LRP proxy: gradient magnitude of W0
-            g = mx.grad(lambda W: mx.square(W).sum())(lyr.W0)
-            score = float(mx.abs(g).mean())
             # Effective weight for choosing rank
             W = lyr.W0
             if lyr.rank > 0:
@@ -116,17 +113,48 @@ class PlasticityManager:
         total = 0
         for lyr in self.layers:
             for entry in lyr.sleep_dict.values():
-                # entry = (q_u, mn_u, sc_u, s, q_v, mn_v, sc_v)
-                q_u, _, _, _, q_v, _, _ = entry
-                total += int(q_u.size + q_v.size)
-        return total  # bytes (uint8 elements)
+                total += self._entry_bytes(entry)
+        return total
 
     def _sleep_bytes(self, lyr: RankLayer) -> int:
         total = 0
         for entry in lyr.sleep_dict.values():
-            q_u, _, _, _, q_v, _, _ = entry
-            total += int(q_u.size + q_v.size)
+            total += self._entry_bytes(entry)
         return total
+
+    @staticmethod
+    def _entry_bytes(entry) -> int:
+        """Approximate byte footprint of a sleep_dict entry."""
+        q_u, mn_u, sc_u, s, q_v, mn_v, sc_v = entry
+
+        def _array_bytes(arr) -> int:
+            shape = getattr(arr, "shape", ())
+            if shape in (None, ()):  # scalar array
+                count = 1
+            else:
+                count = 1
+                for dim in shape:
+                    count *= int(dim)
+            dtype = getattr(arr, "dtype", None)
+            item_bytes = getattr(dtype, "size", None)
+            if item_bytes is None:
+                # Best effort fallback if dtype metadata is unavailable.
+                item_bytes = 0
+            return count * int(item_bytes)
+
+        bytes_total = _array_bytes(q_u) + _array_bytes(q_v)
+
+        float_fields = (mn_u, sc_u, s, mn_v, sc_v)
+        for value in float_fields:
+            if hasattr(value, "dtype"):
+                bytes_total += int(getattr(value.dtype, "size", 0) or 0)
+            elif isinstance(value, float):
+                # Python float is a C double (8 bytes)
+                bytes_total += 8
+            else:
+                # Fallback for unexpected types
+                bytes_total += 0
+        return bytes_total
 
     def _log_event(
         self,
@@ -139,7 +167,9 @@ class PlasticityManager:
         val_before: float,
         val_after: float,
     ) -> None:
-        import json, os, datetime
+        import datetime
+        import json
+        import os
 
         if not self.log_path:
             return

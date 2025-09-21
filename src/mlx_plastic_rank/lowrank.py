@@ -11,13 +11,15 @@ threshold. All heavy linear-algebra ops run inside a CPU stream context
 when available to avoid large Metal allocations on macOS GPUs.
 """
 from __future__ import annotations
-from typing import Tuple, Dict
-from contextlib import nullcontext
+
 import math
+from contextlib import nullcontext
+from typing import Any, Dict, List, Tuple, cast
+
 import mlx.core as mx
 import mlx.nn as nn
 
-from .utils import quantise, dequantise
+from .utils import dequantise, quantise
 
 
 def _cpu_stream():
@@ -202,7 +204,10 @@ class RankLayer(nn.Module):
         self.S = mx.zeros((0,))
         self.V = mx.zeros((0, inn))
         self.bias = mx.array(bias) if bias is not None else None
-        self.sleep_dict = {}
+        self.sleep_dict: Dict[
+            int,
+            Tuple[mx.array, float, float, float, mx.array, float, float],
+        ] = {}
 
     @property
     def rank(self) -> int:
@@ -239,7 +244,10 @@ class RankLayer(nn.Module):
         if sleep_mask.sum() == 0:
             return
         # store sleepers as quantized tuples
-        for idx in mx.where(sleep_mask)[0].tolist():
+        mask_raw = cast(List[Any], sleep_mask.tolist())
+        sleep_flags: List[bool] = [bool(v) for v in mask_raw]
+        sleep_indices = [i for i, flag in enumerate(sleep_flags) if flag]
+        for idx in sleep_indices:
             u, s, v = U[idx], S[idx], V[idx]
             q_u, mn_u, sc_u = quantise(u)
             q_v, mn_v, sc_v = quantise(v)
@@ -253,9 +261,18 @@ class RankLayer(nn.Module):
                 sc_v,
             )
         # trim kept components
-        self.U = U[keep]
-        self.S = S[keep]
-        self.V = V[keep]
+        keep_raw = cast(List[Any], keep.tolist())
+        keep_flags: List[bool] = [bool(v) for v in keep_raw]
+        keep_indices = [i for i, flag in enumerate(keep_flags) if flag]
+        if keep_indices:
+            self.U = mx.concatenate([U[i][None] for i in keep_indices])
+            self.S = mx.concatenate([S[i][None] for i in keep_indices])
+            self.V = mx.concatenate([V[i][None] for i in keep_indices])
+        else:
+            out, inn = self.W0.shape
+            self.U = mx.zeros((0, out))
+            self.S = mx.zeros((0,))
+            self.V = mx.zeros((0, inn))
 
     def wake_rank(self, idx: int):
         q_u, mn_u, sc_u, s, q_v, mn_v, sc_v = self.sleep_dict.pop(idx)
@@ -275,11 +292,11 @@ class RankLayer(nn.Module):
         k_drop = int(self.rank - target_rank)
         # indices of k smallest |S|
         order = mx.argsort(mx.abs(self.S))
-        drop_idx = order[:k_drop].tolist()
+        drop_raw = cast(List[Any], order[:k_drop].tolist())
+        drop_idx = [int(i) for i in drop_raw]
         mask_list = [True] * self.rank
         for idx in drop_idx:
             mask_list[idx] = False
-        keep_mask = mx.array(mask_list)
         for idx in drop_idx:
             u, s, v = self.U[idx], self.S[idx], self.V[idx]
             q_u, mn_u, sc_u = quantise(u)

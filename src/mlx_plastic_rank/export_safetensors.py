@@ -14,9 +14,10 @@ Schema (simple, explicit):
   "__meta__.json": uint8[k]  // utf-8 JSON: {"bits":8,"shape":[m,n],"rank":r,"version":"0.1.0"}
 }
 """
-from typing import Dict, Tuple, Any
-import mlx.core as mx
 import json
+from typing import Any, Dict, Tuple
+
+import mlx.core as mx
 
 
 def to_numpy_tree(tree):
@@ -51,7 +52,7 @@ def print_gguf_instructions():  # pragma: no cover - guidance text
 
 
 # ---------- Low-rank packing API ----------
-from .lowrank import quantize_factors, dequantize_factors, factorized_lowrank
+from .lowrank import dequantize_factors, factorized_lowrank, quantize_factors
 
 
 def pack_lowrank(U: mx.array, S: mx.array, Vh: mx.array, bits: int = 8) -> Dict[str, Any]:
@@ -119,7 +120,8 @@ def load_lowrank(path: str) -> Tuple[mx.array, mx.array, mx.array]:
 
 
 if __name__ == "__main__":  # CLI exporter
-    import argparse, os
+    import argparse
+    import os
 
     parser = argparse.ArgumentParser(description="Export low-rank compressed weights to .safetensors")
     parser.add_argument("--from-weight", required=True, help="Path to weight matrix (.pt)")

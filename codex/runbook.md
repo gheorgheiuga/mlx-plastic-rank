@@ -35,7 +35,9 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
 1. **First production pack** – curate `data/domain_prompts.jsonl`, sweep `r_q ∈ {4,8}` (k/v down-rank automatically), `steps ∈ {500,1000,1500}`, evaluate on the base validation set plus the domain corpus, log CSV (`pack_name,layers,rank_map,alpha,size_MB,load_ms,vram_GB,tps,ppl_base,ppl_pack,ppl_delta_pct,domain_metric`). Target ≤10 % general perplexity delta.
 2. **Ablations** – compare layer sets (`qv`, `qkv`, `qkv+out_proj`), rank maps (mixed q/k/v), dropout sweeps (`0.0,0.05,0.1`). Capture outcomes in the same CSV schema.
 3. **Path-B export** – implement `packs from-delta` to turn finetuned checkpoints into LoRA packs via ΔW SVD; evaluate with Track 1 metrics.
-4. **Reporting** – once experiments stabilize, surface results in README (tables/plots) and link datasets/packs in `codex/dsn/`.
+4. **Reporting**
+    - Job demo r4 (rank_q=4, kv=4): pack 3.83 MB; eval @100 prompts seq128 → PPL 11.58 (+0.09%), TPS 1.13k (-1.4%), token accuracy 0.527; batch eval (bs32 seq256) → PPL Δ +0.01%, TPS loss 7.2%, pack size <6 MB.
+    - Job demo r8 (rank_q=8, kv=8): pack 7.62 MB; eval @100 prompts seq128 → PPL 11.58 (+0.22%), TPS 0.79k (-0.4%), token accuracy 0.527; batch eval (bs32 seq256) → PPL Δ +0.002%, TPS loss 7.1%, pack size <12 MB. – once experiments stabilize, surface results in README (tables/plots) and link datasets/packs in `codex/dsn/`.
 
 ## Testing & Benchmarks
 - Unit coverage: `uv run pytest -q`

@@ -92,5 +92,8 @@ __pycache__/
 /data/
 *.safetensors
 
+# Research scratch
+codex/papers/
+
 # OS cruft (duplicate guard)
 .DS_Store

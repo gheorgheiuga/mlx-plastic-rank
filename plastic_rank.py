@@ -4,13 +4,27 @@ Legacy wrapper for backward compatibility with tests.
 Re-exports key classes and functions from `src/mlx_plastic_rank` and provides
 the demo entrypoint under __main__.
 """
+from typing import TYPE_CHECKING
+
 import mlx.core as mx
 import mlx.nn as nn
 
-from src.mlx_plastic_rank.rank_select import stable_rank  # noqa: F401
-from src.mlx_plastic_rank.lowrank import RankLayer, PlasticBlock  # noqa: F401
-from src.mlx_plastic_rank.plasticity_manager import PlasticityManager  # noqa: F401
-from src.mlx_plastic_rank.utils import set_seed  # noqa: F401
+if TYPE_CHECKING:  # pragma: no cover - canonical imports for tooling
+    from mlx_plastic_rank.lowrank import PlasticBlock, RankLayer  # noqa: F401
+    from mlx_plastic_rank.plasticity_manager import PlasticityManager  # noqa: F401
+    from mlx_plastic_rank.rank_select import stable_rank  # noqa: F401
+    from mlx_plastic_rank.utils import set_seed  # noqa: F401
+else:  # pragma: no cover - runtime fallback for src-layout imports
+    try:
+        from mlx_plastic_rank.lowrank import PlasticBlock, RankLayer  # noqa: F401
+        from mlx_plastic_rank.plasticity_manager import PlasticityManager  # noqa: F401
+        from mlx_plastic_rank.rank_select import stable_rank  # noqa: F401
+        from mlx_plastic_rank.utils import set_seed  # noqa: F401
+    except ImportError:
+        from src.mlx_plastic_rank.lowrank import PlasticBlock, RankLayer  # noqa: F401
+        from src.mlx_plastic_rank.plasticity_manager import PlasticityManager  # noqa: F401
+        from src.mlx_plastic_rank.rank_select import stable_rank  # noqa: F401
+        from src.mlx_plastic_rank.utils import set_seed  # noqa: F401
 
 
 def _gather_params(model):
