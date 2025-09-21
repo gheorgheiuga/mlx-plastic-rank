@@ -1,36 +1,24 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Entry points: `main.py` (CLI banner), `plastic_rank.py` (MLX: `RankLayer`, `PlasticBlock`, `PlasticityManager` + demo loop)
-- Metadata: `pyproject.toml` (Python ≥ 3.13), `.python-version` (pyenv)
-- New code under `src/mlx_plastic_rank/`; tests in `tests/` (e.g., `tests/test_rank_layer.py`)
+Entry points live at `main.py` (CLI banner) and `plastic_rank.py` (demo loop combining `RankLayer`, `PlasticBlock`, and `PlasticityManager`). Core modules extend under `src/mlx_plastic_rank/`—notably `lowrank.py`, `plasticity_manager.py`, and the `packs/` toolkit. Tests mirror features in `tests/` (for example `tests/test_rank_layer.py`, `tests/test_manager_adapters.py`). Support assets reside in `data/` (sample corpora), `packs/` (generated skill packs; ignored in git), and `scripts/` (benchmarks, CLI helpers).
 
 ## Build, Test, and Development Commands
-- Create env (uv): `uv venv` (optional) and `source .venv/bin/activate` or use `uv run` without activating
-- Install deps: `uv pip install mlx`; dev: `uv pip install pytest`
-- Demo: `uv run python plastic_rank.py` (mini training loop; rank/sleep stats)
-- Sanity: `uv run python main.py`
-- Tests: `uv run pytest -q` or `uv run pytest -q -k rank_layer`
+- Environment (optional): `uv venv` then `source .venv/bin/activate`; otherwise call `uv run …`.
+- Install project: `uv pip install -e .`; enable compression extras with `uv pip install -e '.[compress]'`.
+- Core demos: `uv run python main.py` (banner) and `uv run python plastic_rank.py --steps 10` (rank/sleep telemetry).
+- LoRA CLI: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank 8 --alpha 16 --data data/domain_prompts.jsonl --steps 1000`, then `uv run packs apply --name domain-demo --base qwen3-4b-2507-mlx-4bit --dry-run`, and `uv run packs eval --base qwen3-4b-2507-mlx-4bit --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`.
+- Quantized training stays on the 4-bit base; k/v slices down-rank automatically. Use `--train-fp16-fallback` if a projection trips geometry checks.
+- Tests: `uv run pytest -q` or target rank logic with `uv run pytest -q -k rank_layer`.
 
 ## Coding Style & Naming Conventions
-- Python 3.13, 4‑space indentation, UTF‑8
-- Naming: snake_case (functions/vars/modules), PascalCase (classes)
-- Imports: standard → third‑party → local; remove unused
-- Docs/types: concise docstrings and practical type hints for public APIs
-- Formatter: none configured; keep style-only diffs minimal
+Use Python 3.13 with 4-space indentation and UTF-8 files. Apply snake_case to functions, variables, and modules; reserve PascalCase for classes. Structure imports standard → third-party → local and remove unused lines. Public APIs should include concise docstrings plus pragmatic type hints. No autoformatter is enforced—avoid style-only churn in diffs.
 
 ## Testing Guidelines
-- Framework: pytest
-- Naming: files `tests/test_*.py`; functions `test_*`
-- Focus: `RankLayer`, pruning/waking paths, shape/dtype behavior; fix seeds for determinism with MLX ops
-- Commands: `pytest -q` for CI-like output; `pytest -vv -k rank_layer` to target specifics
+- Pytest drives the suite; place cases in `tests/test_*.py` with functions `test_*`. Fix MLX seeds when asserting numeric tolerances, especially around pruning/waking flows. Run `uv run pytest -q` before pushing; capture failure logs for new adapters or CLI paths. Consider adding focused tests (`-k rank_layer`, `-k manager_adapters`) when modifying rank heuristics or pack wiring. Zero-impact tests on quantized Qwen (alpha=0) must continue to pass within `1e-6`.
 
 ## Commit & Pull Request Guidelines
-- Commits: imperative and scoped (e.g., `feat(rank): add prune threshold`, `fix(demo): guard None bias`)
-- PRs: include description, rationale, linked issues, and before/after logs or screenshots; note local demo/test results
-- Readiness: run `python plastic_rank.py` and `pytest -q` before requesting review; keep changes focused and documented
+Write imperative, scoped commit messages (e.g. `feat(rank): add prune threshold`, `fix(packs): guard alpha mismatch`). PRs should describe intent, link issues, and include before/after logs or CSV excerpts for demos. Verify `uv run python plastic_rank.py` and `uv run pytest -q` succeed prior to review. Keep changes focused; document trade-offs or research context in `codex/dsn/` and reference them from the PR.
 
 ## Security & Configuration Tips
-- Use `.python-version` (3.13) and a local `.venv` for isolation
-- MLX requires Apple Silicon/macOS; follow MLX install docs
-- Do not commit large artifacts or credentials; respect `.gitignore`
+Pin Python via `.python-version` (3.13) and prefer a local `.venv` for isolation. MLX targets Apple Silicon—follow upstream install guidance. Do not commit checkpoints, large datasets, or secrets; respect `.gitignore` and export artifacts via SafeTensors when needed.

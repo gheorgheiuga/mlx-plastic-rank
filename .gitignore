@@ -78,11 +78,19 @@ codex/private/
 codex/research/**/*.pdf
 codex/research/**/*.djvu
 codex/research/**/*.zip
+
+# Local caches (keep duplicates harmless but grouped for clarity)
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 .venv/
+
+# Generated artifacts
+/out/
+/packs/
+/data/
 *.safetensors
-out/
+
+# OS cruft (duplicate guard)
 .DS_Store

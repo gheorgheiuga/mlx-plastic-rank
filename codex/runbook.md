@@ -1,119 +1,61 @@
-# Codex runbook — mlx-plastic-rank
+# Codex Runbook — mlx-plastic-rank
 
-Goal
-- Build an MLX toolkit for adaptive low‑rank compression with neuroplastic triggers. Keep components reversible, support parking pruned factors for reactivation, export weights, and ship a demo plus tests.
+This runbook captures the working state of the project, the preferred workflows, and the current research tracks. Update it as experiments land.
 
-Repo layout (current → target)
-- Current: flat modules `main.py`, `plastic_rank.py`, tests in `tests/`.
-- Target (Phase 2):
-  - `src/mlx_plastic_rank/`
-    - `lowrank.py` (RankLayer and utility ops)
-    - `plasticity_manager.py`
-    - `rank_select.py` (policies/heuristics)
-    - `utils.py` (quantize/dequantize, stable_rank, seeds)
-    - `export_safetensors.py` (optional)
-  - Tests remain in `tests/`
+## Mission
+Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the base checkpoint immutable while LoRA-style skill packs introduce domain skills, report rank/latency trade-offs, and remain easy to audit or roll back.
 
-Commands
-- Setup environment: `uv venv && uv pip install -e .` (Apple Silicon + MLX required for MLX features)
-- Run sanity check: `uv run python main.py`
-- Run demo (Apple Silicon + MLX required): `uv run python plastic_rank.py`
-- Run tests: `uv run pytest -q` (or `-k rank_layer` for targeted tests)
-- Reset env: `rm -rf .venv && uv venv`
+## Repository Snapshot (2025-09-20)
+- `src/mlx_plastic_rank/`: low-rank primitives, plasticity manager, rank selection, pack I/O
+- `packs/`: generated skill packs (SafeTensors `.lora.{A,B,alpha}` schema, ≤10 MB)
+- `scripts/`: compression demos (`compress_llm_mlx.py`), pack helpers (`demo_mlx_lm_pack.py`), benchmarks
+- `tests/`: pytest coverage for rank heuristics, LoRA wrappers, CLI smoke tests
+- `codex/`: ADRs, DSNs, research inbox, and this runbook
 
-Implementation rules
-- Use Python 3.13. Package with uv.
-- Use MLX APIs for arrays and linear algebra.
-- Prefer reversible operations; do not hard‑delete capacity—park pruned components in a dict and allow wake‑up.
-- Ensure determinism: seed MLX RNG for tests when feasible.
-- Keep dependencies minimal; provide clear logs for rank and pruning decisions per layer.
+## Core Commands
+- Bootstrap: `uv venv && uv pip install -e .`
+- Demos: `uv run python main.py`, `uv run python plastic_rank.py --steps 10`
+- Packs workflow:
+  - Train: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank 8 --alpha 16 --data data/domain_prompts.jsonl --steps 1000 --lr 1e-4 --lora-dropout 0.05`
+    - Quantized Qwen3 bases stay on 4-bit weights; k/v ranks downshift automatically. Use `--train-fp16-fallback` to dequantize stubborn layers.
+  - Inspect: `uv run packs inspect --name domain-demo`
+  - Apply safely: `uv run packs apply --name domain-demo --base qwen3-4b-2507-mlx-4bit --dry-run`
+  - Evaluate: `uv run packs eval --base qwen3-4b-2507-mlx-4bit --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
+- Compression baseline: `uv run python scripts/compress_llm_mlx.py --hf mlx-community/qwen3-4b-2507-mlx-4bit --out out/qwen3_mlx_compressed --svd randomized --batch-size 20`
+- QA: `uv run pytest -q`, `uv run ruff check`, `uv run mypy`
 
-Status checklist
-- [x] Rebrand to `mlx-plastic-rank` (pyproject + banner + tests)
-- [x] Add `codex/` with runbook and ADRs
- - [x] Fix `quantise` shadowing of `mx` module
- - [x] Fix `bias` truthiness in `RankLayer.__call__`
- - [x] Fix `compress_dict_size` unpack bug
- - [x] Remove unused imports in `plastic_rank.py`
- - [~] Simplify demo loop (no param grads yet)
-- [ ] Move modules under `src/mlx_plastic_rank/` and adjust imports
-- [ ] Expand tests: rank add/prune/wake; shape/dtype checks
+## Implementation Principles
+- Python 3.13 + MLX arrays for heavy math; seed RNG for reproducible tests.
+- Base checkpoints stay immutable; only LoRA packs mutate runtime state.
+- Enforce guardrails: attention ranks ≤8 by default, alpha = 2r unless overridden, packs store only `.lora.{A,B,alpha}` tensors, size cap 10 MB, base hash must match on apply.
+- Log rank/alpha/dropout values whenever packs initialize or attach.
+- Prefer deterministic kernels in demos so metrics compare cleanly.
 
-Research Inbox (add items here; do not commit large PDFs)
+## Active Tracks
+1. **First production pack** – curate `data/domain_prompts.jsonl`, sweep `r_q ∈ {4,8}` (k/v down-rank automatically), `steps ∈ {500,1000,1500}`, evaluate on the base validation set plus the domain corpus, log CSV (`pack_name,layers,rank_map,alpha,size_MB,load_ms,vram_GB,tps,ppl_base,ppl_pack,ppl_delta_pct,domain_metric`). Target ≤10 % general perplexity delta.
+2. **Ablations** – compare layer sets (`qv`, `qkv`, `qkv+out_proj`), rank maps (mixed q/k/v), dropout sweeps (`0.0,0.05,0.1`). Capture outcomes in the same CSV schema.
+3. **Path-B export** – implement `packs from-delta` to turn finetuned checkpoints into LoRA packs via ΔW SVD; evaluate with Track 1 metrics.
+4. **Reporting** – once experiments stabilize, surface results in README (tables/plots) and link datasets/packs in `codex/dsn/`.
+
+## Testing & Benchmarks
+- Unit coverage: `uv run pytest -q`
+- Focused: `uv run pytest -q -k manager_adapters`, `uv run pytest -q -k rank_layer`
+- Perf sanity: `uv run python scripts/bench_memory.py --m 2048 --n 512`
+- Pack smoke test (manual for now):
+  - `uv run packs inspect --name noop`
+  - `uv run packs apply --name noop --base qwen3-4b-2507-mlx-4bit --dry-run`
+  - `uv run packs eval --base qwen3-4b-2507-mlx-4bit --pack noop --data-path data/domain_prompts.jsonl --csv eval_noop.csv`
+  - `uv run packs eval-batch --base qwen3-4b-2507-mlx-4bit --pack noop --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip`
+
+## Research Inbox Guidance
+Log new papers or experiments under “Research Inbox” below using the template. When an entry drives a decision, add an ADR in `codex/decisions.md` or a DSN and reference it from the PR.
+
+### Research Inbox
 - Template:
   - Citation/DOI:
   - Link:
   - Key idea (2–4 bullets):
-  - How it maps to our code (files/functions):
-  - Open questions or conflicts with current design:
+  - Impacted files/modules:
+  - Open questions / risks:
 
-Notes
-- If research guidance conflicts with existing code, document the decision in `codex/decisions.md` and reference the Research Inbox entry.
-- Avoid committing large artifacts; prefer links and notes.
-
-## Key modules to implement
-
-1. rank_select.py
-   - `stable_rank(A, eps=1e-6) -> float`
-   - `theorem_guided_rank(A, target_compression: float) -> int`
-   - Implement the polynomial check and the heuristic described in the Grok report. Use Horner evaluation and a tolerant equality check. Document that the theorem check is used as a heuristic for `r`. See the report notes on saving to SafeTensors and the example layer traversal for q, k, v, o and gate, up, down projections. [grok_report]
-
-2. lowrank.py
-   - `svd_lowrank(A, r) -> A_approx`
-   - `factorized_lowrank(A, r) -> (U, S, Vh)` for reversible storage
-   - Quantize to 8‑bit (optional): `quantize_factors(U, S, Vh, bits=8)`
-
-3. plasticity_manager.py
-   - Maintains moving validation loss and a delta threshold `delta`.
-   - When loss change < `delta`, trigger growth or shrink on selected layers.
-   - Selection policy: placeholder LRP score or simple gradient‑norm ranking.
-   - Strategy options: `"stable"`, `"theorem"`, `"activation"`.
-   - Growth: add LoRA‑style factors of rank `k`.
-   - Shrink: soft‑threshold singular values, park tiny components in `sleep_dict`.
-   - Reactivation path if validation worsens after shrink.
-
-4. export_safetensors.py
-   - Extract current model weights as dict, then `mx.save_safetensors(path, weights)`.
-   - Print instructions to convert to GGUF with `llama.cpp/convert_hf_to_gguf.py` and flags to carry tokenizer and chat template metadata as the Grok report advises. [grok_report]
-
-5. utils.py
-   - Helpers for Jacobian or activation covariance rank estimation.
-   - Logging utilities.
-
-### Demo script
-- `scripts/demo_plasticity_blocks.py`
-  - Build a small stub model from `PlasticBlock` modules (no checkpoint I/O).
-  - Run a short plasticity phase with `PlasticityManager` on random inputs.
-  - Log rank changes to JSONL and print a compact table with bytes units.
-
-### Compression script
-- `scripts/compress_gemma2_mlx.py` (optional)
-  - Downloads a Hugging Face MLX checkpoint and compresses 2‑D tensors with SVD,
-    choosing rank via `rank_select.choose_rank` ("stable" or "theorem").
-  - Writes compressed `.safetensors` and copies tokenizer/config alongside; emits a small meta JSON.
-  - Requires extra deps (e.g., `huggingface_hub`).
-
-### Tests
-1. test_rank_select.py
-   - Random matrix and near‑idempotent matrix cases.
-   - Assert `theorem_guided_rank` returns a sensible `r` within `[1, min(A.shape)]`.
-
-2. test_roundtrip.py
-   - For a random weight `A`: compress with `svd_lowrank`, reconstruct, and check relative Frobenius error below a threshold expected for rank `r`.
-
-3. test_plasticity_triggers.py
-   - Simulate validation loss plateau; ensure `PlasticityManager` increases or decreases rank and logs the action.
-
-### Dev environment
-Create `pyproject.toml` with uv groups:
-
-```ini
-[project]
-name = "mlx-plastic-rank"
-version = "0.1.0"
-requires-python = ">=3.11"
-dependencies = ["mlx>=0.20.0", "numpy", "sympy", "safetensors"]
-
-[tool.uv]
-dev-dependencies = ["pytest", "ruff", "mypy", "pytest-cov"]
-```
+Keep this section lightweight—no PDFs or large datasets in the repo.
