@@ -48,11 +48,12 @@ class TargetSpec:
         return self.start, self.end
 
     def default_rank(self, base_rank: int) -> int:
+        candidate: float
         if self.kind == "q":
-            candidate = base_rank
+            candidate = float(base_rank)
         else:
             if self.hidden_size <= 0:
-                candidate = base_rank
+                candidate = float(base_rank)
             else:
                 ratio = base_rank * self.kv_hidden / float(self.hidden_size)
                 candidate = max(2.0, ratio)

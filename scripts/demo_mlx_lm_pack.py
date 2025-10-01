@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence, SupportsInt, cast
 
 import mlx.core as mx
 import numpy as np
@@ -33,17 +33,26 @@ def generate_text(
         logits = model(tokens)
         next_logits = logits[:, -1, :]
         if temperature <= 0:
-            next_token = int(mx.argmax(next_logits, axis=-1).item())
+            argmax_value = mx.argmax(next_logits, axis=-1).item()
+            next_token = int(cast(SupportsInt, argmax_value))
         else:
             scaled = next_logits / temperature
             probs = mx.softmax(scaled, axis=-1)
             mx.eval(probs)
             probs_np = np.array(probs)[0]
-            next_token = int(np.random.choice(len(probs_np), p=probs_np))
+            sampled_index = np.random.choice(len(probs_np), p=probs_np)
+            if isinstance(sampled_index, np.ndarray):
+                sampled_scalar = cast(SupportsInt, sampled_index.item())
+            elif isinstance(sampled_index, np.generic):
+                sampled_scalar = cast(SupportsInt, sampled_index.item())
+            else:
+                sampled_scalar = cast(SupportsInt, sampled_index)
+            next_token = int(sampled_scalar)
         next_id = mx.array([[next_token]], dtype=mx.int32)
         tokens = mx.concatenate([tokens, next_id], axis=1)
 
-    output_ids = [int(t) for t in tokens[0].tolist()]
+    raw_output_ids = cast(Sequence[SupportsInt], tokens[0].tolist())
+    output_ids = [int(token) for token in raw_output_ids]
     return tokenizer.decode(output_ids)
 
 
