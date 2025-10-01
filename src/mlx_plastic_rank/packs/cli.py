@@ -13,14 +13,14 @@ from typing import Dict, List
 
 import mlx.core as mx
 import mlx.nn as nn
+from mlx.nn.layers.quantized import QuantizedLinear
 from mlx_lm.perplexity import eval_ppl, load_data
 from mlx_lm.utils import load as load_model
-from mlx.nn.layers.quantized import QuantizedLinear
 
 from .dataset import build_token_dataset, load_jsonl_texts
-from .inspection import ALLOWED_RANKS, TensorInfo, size_limit_for, summarize_pack
-from .io import compute_sha256, save_pack, save_pack_metadata
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
+from .inspection import TensorInfo, size_limit_for, summarize_pack
+from .io import compute_sha256, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
 from .train import TrainingConfig, train_lora
 

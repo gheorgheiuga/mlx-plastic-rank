@@ -11,10 +11,10 @@ from typing import Dict, Iterable, List, Tuple
 import mlx.core as mx
 import numpy as np
 
-from .inspection import ALLOWED_RANKS, MAX_PACK_BYTES, size_limit_for
+from ..rank_select import choose_rank
+from .inspection import ALLOWED_RANKS, size_limit_for
 from .io import PackMetadata, compute_sha256, load_pack, load_pack_metadata
 from .lora import SLICE_MAP, LoRAFusedLinear, SliceLoRA
-from ..rank_select import choose_rank
 
 
 class PackApplicationError(RuntimeError):

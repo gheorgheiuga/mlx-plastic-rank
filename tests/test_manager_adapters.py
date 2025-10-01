@@ -2,11 +2,10 @@ import types
 
 import mlx.core as mx
 import mlx.nn as nn
-
 import pytest
+from mlx.nn.layers.quantized import QuantizedLinear
 
 from mlx_plastic_rank.packs.manager import LoRAManager, PackApplicationError
-from mlx.nn.layers.quantized import QuantizedLinear
 
 
 class FusedAttention:

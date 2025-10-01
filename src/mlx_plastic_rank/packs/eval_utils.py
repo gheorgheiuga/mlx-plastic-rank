@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-
 ANGLE_THINK_PATTERN = re.compile(r"<<\s*(/?)\s*think\s*>>", re.IGNORECASE)
 THINK_SPAN_PATTERN = re.compile(
     r"<(?P<tag>think|thinking)>(?P<body>.*?)</(?P=tag)>", re.IGNORECASE | re.DOTALL
