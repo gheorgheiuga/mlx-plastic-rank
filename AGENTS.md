@@ -5,7 +5,7 @@ Entry points live at `main.py` (CLI banner) and `plastic_rank.py` (demo loop com
 
 ## Build, Test, and Development Commands
 - Environment (optional): `uv venv` then `source .venv/bin/activate`; otherwise call `uv run …`.
-- Install project: `uv pip install -e .`; enable compression extras with `uv pip install -e '.[compress]'`.
+- Install project: `uv pip install -e .`; enable compression extras with `uv pip install -e '.[compress]'`; install pack extras with `uv pip install -e '.[packs]'`.
 - Core demos: `uv run python main.py` (banner) and `uv run python plastic_rank.py --steps 10` (rank/sleep telemetry).
 - LoRA CLI: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl`, then `uv run packs apply --name domain-demo --base qwen3-4b-2507-mlx-4bit --dry-run`, and `uv run packs eval --base qwen3-4b-2507-mlx-4bit --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`.
 - Quantized training stays on the 4-bit base; k/v slices down-rank automatically. Use `--train-fp16-fallback` if a projection trips geometry checks.

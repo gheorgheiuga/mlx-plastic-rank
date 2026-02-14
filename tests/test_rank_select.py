@@ -41,3 +41,12 @@ def test_theorem_guided_lowrank_random():
     sr = rank_select.stable_rank(A)
     assert r >= int(sr)
     assert res <= 1.0
+
+
+def test_theorem_guided_residual_tracks_reconstruction_error():
+    rank_select = importlib.import_module("mlx_plastic_rank.rank_select")
+    # Diagonal spectrum where rank-1 keeps ~75% energy.
+    A = mx.diag(mx.array([4.0, 2.0, 1.0, 0.5], dtype=mx.float32))
+    r, res = rank_select.theorem_guided_rank(A, target_compression=0.6)
+    assert r == 1
+    assert 0.0 < res < 1.0

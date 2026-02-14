@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Tuple
 
@@ -90,7 +91,10 @@ class LoRAFusedLinear(nn.Module):
         return self.adapters.values()
 
     def set_dropout(self, rate: float) -> None:
-        self.dropout = max(0.0, float(rate))
+        value = float(rate)
+        if not math.isfinite(value) or value < 0.0 or value >= 1.0:
+            raise ValueError("LoRA dropout must be in the range [0.0, 1.0).")
+        self.dropout = value
 
     def _apply_dropout(self, x: mx.array) -> mx.array:
         if self.dropout <= 0.0:

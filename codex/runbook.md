@@ -13,7 +13,7 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
 - `codex/`: ADRs, DSNs, research inbox, and this runbook
 
 ## Core Commands
-- Bootstrap: `uv venv && uv pip install -e .`
+- Bootstrap: `uv venv && uv pip install -e .` (add `uv pip install -e '.[packs]'` for packs CLI)
 - Demos: `uv run python main.py`, `uv run python plastic_rank.py --steps 10`
 - Packs workflow:
   - Train: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`

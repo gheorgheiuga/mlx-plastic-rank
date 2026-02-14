@@ -118,16 +118,22 @@ def _linear_weight_array(linear) -> mx.array:
 class LoRAManager:
     """Injection manager for GPT-2 LoRA skill packs."""
 
-    def __init__(self, model, base_checkpoint: Path | None = None):
+    def __init__(
+        self,
+        model,
+        base_checkpoint: Path | None = None,
+        base_model: str | None = None,
+    ):
         self.model = model
         self.base_checkpoint = base_checkpoint
+        self.base_model = base_model or (str(base_checkpoint) if base_checkpoint else None)
         self.base_hash: str | None = None
         self._wrapped = False
         self._wrappers: Dict[Tuple[int, str], LoRAFusedLinear] = {}
         self._active_pack: str | None = None
         self._adapter_registry: Dict[str, SliceLoRA] = {}
         self.model_type = getattr(model, "model_type", None)
-        if base_checkpoint:
+        if base_checkpoint and base_checkpoint.exists():
             self.base_hash = compute_sha256(base_checkpoint)
         self._blocks_cache: list | None = None
         self._target_specs: Dict[str, TargetSpec] = {}
@@ -347,7 +353,6 @@ class LoRAManager:
         self._adapter_registry.clear()
         self._active_pack = None
         self.current_dropout = 0.0
-        self.current_dropout = 0.0
 
     def _adapter_key(self, block_idx: int, target: str) -> str:
         return f"blocks.{block_idx}.{target}"
@@ -537,6 +542,14 @@ class LoRAManager:
             )
         self._validate_rank_alpha(metadata.rank_map, metadata.alpha_map)
         tensors = load_pack(tensor_path)
+        expected_keys: set[str] = set()
+        for key in metadata.rank_map:
+            expected_keys.add(f"{key}.lora.A")
+            expected_keys.add(f"{key}.lora.B")
+            expected_keys.add(f"{key}.lora.alpha")
+        unexpected = sorted(k for k in tensors.keys() if k not in expected_keys)
+        if unexpected:
+            raise PackApplicationError(f"Pack contains unexpected tensors: {unexpected}")
         total_bytes = sum(arr.nbytes for arr in tensors.values())
         limit = size_limit_for(metadata)
         if total_bytes > limit:
@@ -593,6 +606,26 @@ class LoRAManager:
             spec = self._target_specs.get(target)
             if spec is None:
                 raise PackApplicationError(f"Pack target '{target}' unsupported for this model")
+            if rank <= 0:
+                raise PackApplicationError(f"Invalid LoRA rank {rank} on {key}")
+            if A.ndim != 2 or B.ndim != 2:
+                raise PackApplicationError(f"LoRA tensors for {key} must be rank-2 matrices")
+            if A.shape[0] != spec.output_dim:
+                raise PackApplicationError(
+                    f"LoRA A shape mismatch on {key}: expected first dim {spec.output_dim}, found {A.shape[0]}"
+                )
+            if B.shape[1] != spec.input_dim:
+                raise PackApplicationError(
+                    f"LoRA B shape mismatch on {key}: expected second dim {spec.input_dim}, found {B.shape[1]}"
+                )
+            if A.shape[1] != B.shape[0]:
+                raise PackApplicationError(
+                    f"LoRA rank mismatch on {key}: A rank {A.shape[1]} != B rank {B.shape[0]}"
+                )
+            if A.shape[1] != rank:
+                raise PackApplicationError(
+                    f"LoRA metadata rank mismatch on {key}: meta rank {rank}, tensor rank {A.shape[1]}"
+                )
             start, end = spec.bounds()
             adapter = SliceLoRA(
                 name=key,
@@ -639,7 +672,7 @@ class LoRAManager:
         metadata = PackMetadata(
             pack_name=name,
             base_hash=self.base_hash or "",
-            base_model=str(self.base_checkpoint) if self.base_checkpoint else None,
+            base_model=self.base_model,
             rank_map=rank_map,
             alpha_map=alpha_map,
             target_layers=target_layers,
@@ -657,7 +690,10 @@ class LoRAManager:
         return tensors, metadata
 
     def set_dropout(self, rate: float) -> None:
-        self.current_dropout = max(0.0, float(rate))
+        value = float(rate)
+        if not math.isfinite(value) or value < 0.0 or value >= 1.0:
+            raise PackApplicationError("LoRA dropout must be in the range [0.0, 1.0).")
+        self.current_dropout = value
         if self._wrapped:
             for wrapper in self._wrappers.values():
                 wrapper.set_dropout(self.current_dropout)

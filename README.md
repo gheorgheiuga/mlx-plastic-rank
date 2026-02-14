@@ -26,8 +26,9 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
    - `source .venv/bin/activate`
 2. Install the project in editable mode: `uv pip install -e .`
 3. Add extras when exploring compression flows: `uv pip install -e '.[compress]'`
-4. Run the sanity check: `uv run python main.py`
-5. Execute the plasticity demo: `uv run python plastic_rank.py --steps 10`
+4. Install pack tooling extras before using `packs`: `uv pip install -e '.[packs]'`
+5. Run the sanity check: `uv run python main.py`
+6. Execute the plasticity demo: `uv run python plastic_rank.py --steps 10`
 
 ## LoRA Skill Packs
 - Train a pack: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`
@@ -52,6 +53,7 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 
 ## Requirements & Notes
 - Apple Silicon with MLX installed is required for GPU-backed ops; SVD falls back to CPU streams.
+- `packs` commands require `mlx-lm` (install with `uv pip install -e '.[packs]'`).
 - Packs enforce `.lora.{A,B,alpha}` tensor schema, fp16 matrices, fp32 alpha, ≤10 MB total.
 - RNG seeds are fixed in tests to keep MLX operations deterministic.
 

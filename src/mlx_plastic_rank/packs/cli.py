@@ -14,8 +14,6 @@ from typing import Dict, List
 import mlx.core as mx
 import mlx.nn as nn
 from mlx.nn.layers.quantized import QuantizedLinear
-from mlx_lm.perplexity import eval_ppl, load_data
-from mlx_lm.utils import load as load_model
 
 from .dataset import build_token_dataset, load_jsonl_texts
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
@@ -30,10 +28,44 @@ LORA_ALIAS_MAP = {
     "v": "attn.v_proj",
 }
 
+try:
+    from mlx_lm.perplexity import eval_ppl as _eval_ppl
+    from mlx_lm.perplexity import load_data as _load_data
+    from mlx_lm.utils import load as _load_model
+except ModuleNotFoundError:
+    _eval_ppl = None
+    _load_data = None
+    _load_model = None
+
 
 def _resolve_target(name: str) -> str:
     canonical = name.strip()
     return LORA_ALIAS_MAP.get(canonical, canonical)
+
+
+def _require_mlx_lm():
+    if _load_model is None or _eval_ppl is None or _load_data is None:
+        raise SystemExit(
+            "The packs CLI requires `mlx-lm`. Install it with: uv pip install -e '.[packs]'"
+        )
+    return _load_model, _eval_ppl, _load_data
+
+
+def _resolve_base_checkpoint(base_ref: str) -> Path | None:
+    candidate = Path(base_ref).expanduser()
+    if candidate.exists():
+        return candidate
+    return None
+
+
+def _parse_lora_dropout(raw: str) -> float:
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid dropout value '{raw}'") from exc
+    if value < 0.0 or value >= 1.0:
+        raise argparse.ArgumentTypeError("LoRA dropout must be in the range [0.0, 1.0).")
+    return value
 
 
 def _evaluate_perplexity(model, dataset: mx.array, batch_size: int) -> Dict[str, float]:
@@ -83,19 +115,23 @@ def _default_pack_dir(name: str) -> Path:
 
 
 def cmd_create(args: argparse.Namespace) -> None:
-    base_path = Path(args.base)
+    load_model, _, _ = _require_mlx_lm()
+    base_ref = str(args.base)
+    base_checkpoint = _resolve_base_checkpoint(base_ref)
     pack_dir = _default_pack_dir(args.name)
     if pack_dir.exists() and not args.force:
         raise SystemExit(f"Pack '{args.name}' already exists. Use --force to overwrite.")
 
-    print(f"Loading base model from {base_path}...")
-    model, tokenizer = load_model(str(base_path))
+    print(f"Loading base model from {base_ref}...")
+    model, tokenizer = load_model(base_ref)
     if getattr(args, "train_fp16_fallback", False):
         converted = _dequantize_linear_inplace(model)
         if converted:
             print(f"Dequantized {converted} quantized linear layers for training fallback")
 
-    manager = LoRAManager(model, base_checkpoint=base_path)
+    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
+    if base_checkpoint is None:
+        print("Warning: --base is not a local path; base hash verification will be skipped.")
 
     layers = [layer.strip() for layer in args.layers.split(",") if layer.strip()]
     canonical_layers = [_resolve_target(layer) for layer in layers]
@@ -106,11 +142,11 @@ def cmd_create(args: argparse.Namespace) -> None:
 
     auto_rank_map, auto_alpha_map, residuals = manager.compute_auto_ranks(
         canonical_layers,
-        strategy="theorem",
+        strategy=args.rank_strategy,
         target_compression=args.target_compression,
         eps=args.rank_eps,
     )
-    print("Auto-selected ranks (Pop theorem):")
+    print(f"Auto-selected ranks ({args.rank_strategy}):")
     rank_map: Dict[str, int] = {}
     alpha_map: Dict[str, float] = {}
     for target in canonical_layers:
@@ -178,18 +214,23 @@ def cmd_create(args: argparse.Namespace) -> None:
 
 
 def cmd_apply(args: argparse.Namespace) -> None:
-    base_path = Path(args.base)
+    load_model, _, _ = _require_mlx_lm()
+    base_ref = str(args.base)
+    base_checkpoint = _resolve_base_checkpoint(base_ref)
     pack_dir = _default_pack_dir(args.name)
     if not pack_dir.exists():
         raise SystemExit(f"Pack '{args.name}' not found at {pack_dir}")
 
     print(f"Inspecting pack '{args.name}'...")
     metadata, infos, _, total_bytes, non_lora = summarize_pack(pack_dir)
-    base_hash = compute_sha256(base_path)
-    if metadata.base_hash and metadata.base_hash != base_hash:
-        raise SystemExit(
-            f"Base hash mismatch: pack built for {metadata.base_hash[:8]}, base is {base_hash[:8]}"
-        )
+    if base_checkpoint is not None:
+        base_hash = compute_sha256(base_checkpoint)
+        if metadata.base_hash and metadata.base_hash != base_hash:
+            raise SystemExit(
+                f"Base hash mismatch: pack built for {metadata.base_hash[:8]}, base is {base_hash[:8]}"
+            )
+    elif metadata.base_hash:
+        print("Warning: --base is not a local path; base hash verification skipped.")
     if non_lora:
         raise SystemExit(f"Pack contains non-LoRA tensors: {non_lora}")
     limit = size_limit_for(metadata)
@@ -211,8 +252,8 @@ def cmd_apply(args: argparse.Namespace) -> None:
         print(f"Estimated VRAM footprint: {total_bytes / (1024**2):.2f} MB")
         return
 
-    model, _ = load_model(str(base_path))
-    manager = LoRAManager(model, base_checkpoint=base_path)
+    model, _ = load_model(base_ref)
+    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
     try:
         metadata = manager.apply_pack(pack_dir)
     except PackApplicationError as exc:
@@ -224,7 +265,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
         session = {
             "pack": metadata.pack_name,
             "pack_dir": str(pack_dir),
-            "base": str(base_path),
+            "base": base_ref,
             "base_hash": metadata.base_hash,
             "timestamp": time.time(),
         }
@@ -321,17 +362,19 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 
 def cmd_eval(args: argparse.Namespace) -> None:
+    load_model, eval_ppl, load_data = _require_mlx_lm()
     data_path = args.data_path
 
     dataset_cached = None
     dataset_type = None
     base_logits_sample = None
 
-    def evaluate(model_path: Path, pack_dir: Path | None = None) -> dict:
+    def evaluate(model_ref: str, pack_dir: Path | None = None) -> dict:
         nonlocal dataset_cached, dataset_type, base_logits_sample
         start_load = time.time()
-        model, tokenizer = load_model(str(model_path))
-        manager = LoRAManager(model, base_checkpoint=model_path)
+        base_checkpoint = _resolve_base_checkpoint(model_ref)
+        model, tokenizer = load_model(model_ref)
+        manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=model_ref)
         pack_name = None
         pack_size = 0
         if pack_dir is not None:
@@ -397,7 +440,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
                 token_accuracy = correct / float(total)
 
         return {
-            "model": str(model_path),
+            "model": model_ref,
             "pack": pack_name,
             "pack_size_bytes": pack_size,
             "size_mb": pack_size / (1024 * 1024),
@@ -411,10 +454,10 @@ def cmd_eval(args: argparse.Namespace) -> None:
             "token_accuracy": token_accuracy,
         }
 
-    base_metrics = evaluate(Path(args.base), None)
+    base_metrics = evaluate(str(args.base), None)
     results = [base_metrics]
     if args.pack:
-        results.append(evaluate(Path(args.base), _default_pack_dir(args.pack)))
+        results.append(evaluate(str(args.base), _default_pack_dir(args.pack)))
 
     base_ppl = results[0]["perplexity"]
     for row in results:
@@ -442,13 +485,15 @@ def cmd_eval(args: argparse.Namespace) -> None:
 
 
 def cmd_eval_batch(args: argparse.Namespace) -> None:
-    base_path = Path(args.base)
+    load_model, _, _ = _require_mlx_lm()
+    base_ref = str(args.base)
+    base_checkpoint = _resolve_base_checkpoint(base_ref)
     batch_sizes = parse_batch_sizes(args.batch_size)
     thinking_mode, cap_tokens = parse_thinking_option(args.thinking)
     prompts_by_domain = load_domain_prompts(Path(args.input), thinking_mode, cap_tokens)
 
-    model, tokenizer = load_model(str(base_path))
-    manager = LoRAManager(model, base_checkpoint=base_path)
+    model, tokenizer = load_model(base_ref)
+    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
 
     datasets: Dict[str, mx.array] = {}
     for domain, texts in prompts_by_domain.items():
@@ -474,11 +519,14 @@ def cmd_eval_batch(args: argparse.Namespace) -> None:
             raise SystemExit(
                 f"Pack size {total_bytes / (1024**2):.2f} MB exceeds limit {(limit / (1024**2)):.1f} MB"
             )
-        base_hash = compute_sha256(base_path)
-        if metadata.base_hash and metadata.base_hash != base_hash:
-            raise SystemExit(
-                f"Base hash mismatch: pack built for {metadata.base_hash[:8]}, base is {base_hash[:8]}"
-            )
+        if base_checkpoint is not None:
+            base_hash = compute_sha256(base_checkpoint)
+            if metadata.base_hash and metadata.base_hash != base_hash:
+                raise SystemExit(
+                    f"Base hash mismatch: pack built for {metadata.base_hash[:8]}, base is {base_hash[:8]}"
+                )
+        elif metadata.base_hash:
+            print("Warning: --base is not a local path; base hash verification skipped.")
         pack_size_mb = total_bytes / (1024**2)
         try:
             manager.apply_pack(pack_dir)
@@ -554,6 +602,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create.add_argument("--layers", default="attn.q_proj,attn.k_proj,attn.v_proj")
     create.add_argument(
+        "--rank-strategy",
+        choices=["stable", "theorem"],
+        default="theorem",
+        help="Rank selection strategy for automatic LoRA rank selection",
+    )
+    create.add_argument(
         "--target-compression",
         type=float,
         default=0.9,
@@ -572,7 +626,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--sequence-length", type=int, default=128)
     create.add_argument("--seed", type=int, default=42)
     create.add_argument("--zero-init", action="store_true")
-    create.add_argument("--lora-dropout", type=float, default=0.0)
+    create.add_argument("--lora-dropout", type=_parse_lora_dropout, default=0.0)
     create.add_argument("--notes", default="")
     create.add_argument("--force", action="store_true")
     create.add_argument(

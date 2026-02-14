@@ -86,3 +86,12 @@ def test_alpha_zero_no_effect():
     wrapper.add_adapter(adapter)
     x = mx.random.normal((2, 4))
     assert mx.allclose(wrapper(x), base(x))
+
+
+def test_dropout_bounds_validation():
+    base = nn.Linear(4, 12, bias=False)
+    wrapper = LoRAFusedLinear(base, input_dim=4, output_dim=12)
+    with pytest.raises(ValueError):
+        wrapper.set_dropout(-0.1)
+    with pytest.raises(ValueError):
+        wrapper.set_dropout(1.0)

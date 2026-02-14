@@ -33,37 +33,27 @@ def stable_rank(A: ArrayLike, eps: float = 1e-6) -> float:
     return float(fro2 / denom)
 
 
-def _numerical_rank(M: ArrayLike, eps: float = 1e-6) -> int:
-    s = np.linalg.svd(_to_numpy_f32(M), compute_uv=False)
-    if s.size == 0:
-        return 0
-    thr = float(s[0] * eps)
-    return int((s > thr).sum())
-
-
 def theorem_guided_rank(
     A: ArrayLike, target_compression: float = 0.9, eps: float = 1e-6, tol: float = 1.0
 ) -> Tuple[int, float]:
-    """Select a rank guided by a simple polynomial rank identity.
+    """Select a rank guided by spectral energy and reconstruction residual.
 
-    Steps
-    - Compute singular values of A and choose r0 as the smallest r s.t.
-      sum_{i<=r} s_i^2 / sum s_i^2 >= target_compression.
-    - Evaluate polynomials via Horner on the rank-r truncated matrix A_r:
-        f(x)=x, g(x)=x^2-x, D(x)=x, M(x)=x(x-1).
-    - Compute numerical ranks with tolerance eps and residual
-      res = |(rf + rg) - (rd + rm)|.
-    - If res > tol, increment r until residual <= tol or r hits full rank.
+    Procedure
+    - Compute SVD once and pick r0 as the smallest rank whose cumulative
+      spectral energy reaches ``target_compression``.
+    - Reconstruct ``A_r`` and compute a relative Frobenius residual:
+      ``res = ||A - A_r||_F / (||A||_F + eps)``.
+    - If ``res > tol``, increment ``r`` until residual is within tolerance or
+      full rank is reached.
 
-    Returns (r, residual).
+    Returns ``(r, residual)`` where ``residual`` is the final relative error.
     """
     A_np = _to_numpy_f32(A)
     if A_np.ndim != 2 or A_np.shape[0] != A_np.shape[1]:
         raise ValueError("theorem_guided_rank expects a square 2D matrix")
 
-    # singular values of A
-    s = np.linalg.svd(A_np, compute_uv=False)
-    s2 = s * s
+    U, S, Vh = np.linalg.svd(A_np, full_matrices=False)
+    s2 = S * S
     total = float(s2.sum())
     cdf = np.cumsum(s2) / (total + 1e-12) if total != 0 else np.array([], dtype=np.float32)
     if cdf.size == 0:
@@ -76,21 +66,10 @@ def theorem_guided_rank(
     full = min(A_np.shape)
     residual = float("inf")
     while r <= full:
-        # NumPy truncated SVD for reconstruction on CPU
-        U, S, Vh = np.linalg.svd(A_np, full_matrices=False)
         A_r = (U[:, :r] * S[:r][None, :]) @ Vh[:r, :]
-        I = np.eye(A_np.shape[0], dtype=np.float32)
-        # Horner-evaluated polynomials
-        fA = A_r
-        gA = A_r @ (A_r - I)  # x(x-1)
-        DA = A_r
-        MA = A_r @ (A_r - I)
-
-        rf = _numerical_rank(fA, eps)
-        rg = _numerical_rank(gA, eps)
-        rd = _numerical_rank(DA, eps)
-        rm = _numerical_rank(MA, eps)
-        residual = abs((rf + rg) - (rd + rm))
+        num = float(np.linalg.norm(A_np - A_r, ord="fro"))
+        den = float(np.linalg.norm(A_np, ord="fro")) + float(eps)
+        residual = num / den
         if residual <= tol:
             break
         r += 1
