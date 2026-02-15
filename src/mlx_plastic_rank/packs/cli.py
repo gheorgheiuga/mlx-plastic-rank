@@ -17,9 +17,10 @@ from mlx.nn.layers.quantized import QuantizedLinear
 
 from .dataset import build_token_dataset, load_jsonl_texts
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
-from .inspection import TensorInfo, size_limit_for, summarize_pack
+from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize_pack
 from .io import compute_sha256, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
+from .router import DomainPackRouter, load_domain_map
 from .train import TrainingConfig, train_lora
 
 LORA_ALIAS_MAP = {
@@ -51,6 +52,14 @@ def _require_mlx_lm():
     return _load_model, _eval_ppl, _load_data
 
 
+def _require_load_model():
+    if _load_model is None:
+        raise SystemExit(
+            "The packs CLI requires `mlx-lm`. Install it with: uv pip install -e '.[packs]'"
+        )
+    return _load_model
+
+
 def _resolve_base_checkpoint(base_ref: str) -> Path | None:
     candidate = Path(base_ref).expanduser()
     if candidate.exists():
@@ -66,6 +75,24 @@ def _parse_lora_dropout(raw: str) -> float:
     if value < 0.0 or value >= 1.0:
         raise argparse.ArgumentTypeError("LoRA dropout must be in the range [0.0, 1.0).")
     return value
+
+
+def _parse_min_rank(raw: str) -> int:
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid min rank '{raw}'") from exc
+    if value < 0:
+        raise argparse.ArgumentTypeError("Minimum rank must be >= 0")
+    return value
+
+
+def _tokenise_prompt(tokenizer, prompt: str, max_tokens: int) -> mx.array:
+    token_ids = tokenizer.encode(prompt)
+    if not token_ids:
+        token_ids = [0]
+    clipped = token_ids[: max(1, max_tokens)]
+    return mx.array([clipped], dtype=mx.int32)
 
 
 def _evaluate_perplexity(model, dataset: mx.array, batch_size: int) -> Dict[str, float]:
@@ -140,18 +167,34 @@ def cmd_create(args: argparse.Namespace) -> None:
     if disallowed:
         raise SystemExit(f"Unsupported LoRA targets: {disallowed}. Only q,k,v projections are allowed.")
 
-    auto_rank_map, auto_alpha_map, residuals = manager.compute_auto_ranks(
+    try:
+        allowed_ranks = allowed_ranks_for(args.profile)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+
+    auto_rank_map, _, residuals = manager.compute_auto_ranks(
         canonical_layers,
         strategy=args.rank_strategy,
         target_compression=args.target_compression,
         eps=args.rank_eps,
+        allowed_ranks=allowed_ranks,
     )
-    print(f"Auto-selected ranks ({args.rank_strategy}):")
+    print(f"Auto-selected ranks ({args.rank_strategy}, profile={args.profile}):")
     rank_map: Dict[str, int] = {}
     alpha_map: Dict[str, float] = {}
+
+    def _snap_to_allowed(candidate: int) -> int:
+        for allowed in sorted(allowed_ranks):
+            if allowed >= int(candidate):
+                return allowed
+        return sorted(allowed_ranks)[-1]
+
     for target in canonical_layers:
-        rank_map[target] = auto_rank_map[target]
-        alpha_map[target] = auto_alpha_map[target]
+        selected_rank = auto_rank_map[target]
+        if args.min_rank > 0:
+            selected_rank = _snap_to_allowed(max(selected_rank, args.min_rank))
+        rank_map[target] = selected_rank
+        alpha_map[target] = 2.0 * selected_rank
         res = residuals[target]
         print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
 
@@ -167,6 +210,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         rank_map=rank_map,
         alpha_map=alpha_map,
         dropout=args.lora_dropout,
+        allowed_ranks=allowed_ranks,
     )
     if args.zero_init:
         for adapter in adapters.values():
@@ -194,6 +238,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         args.name,
         PACK_ROOT,
         notes=args.notes,
+        profile=args.profile,
     )
     tensor_path = pack_dir / "pack.safetensors"
     meta_path = pack_dir / "meta.json"
@@ -297,6 +342,7 @@ def cmd_inspect(args: argparse.Namespace) -> None:
         )
 
     print(f"Pack: {metadata.pack_name}")
+    print(f"Profile: {metadata.profile}")
     print(f"Base hash: {metadata.base_hash}")
     print(f"Target layers: {metadata.target_layers}")
     print(f"Ranks: {metadata.rank_map}")
@@ -351,7 +397,7 @@ def cmd_list(args: argparse.Namespace) -> None:
         limit_mb = limit_bytes / (1024 * 1024)
         over = "!" if total_bytes > limit_bytes else ""
         rows.append(
-            f"{metadata.pack_name:<16} size={size_mb:5.2f}MB/{limit_mb:4.1f}MB{over} ranks={ranks} layers={len(metadata.target_layers)} created={created[:19]} base={metadata.base_hash[:8]}"
+            f"{metadata.pack_name:<16} profile={metadata.profile:<5} size={size_mb:5.2f}MB/{limit_mb:4.1f}MB{over} ranks={ranks} layers={len(metadata.target_layers)} created={created[:19]} base={metadata.base_hash[:8]}"
         )
     if not rows:
         print("No packs found.")
@@ -589,6 +635,102 @@ def cmd_eval_batch(args: argparse.Namespace) -> None:
         print(f"Evaluation metrics CSV written to {csv_path}")
 
 
+def cmd_route(args: argparse.Namespace) -> None:
+    load_model = _require_load_model()
+    base_ref = str(args.base)
+    base_checkpoint = _resolve_base_checkpoint(base_ref)
+    domain_map_path = Path(args.domain_map)
+    input_path = Path(args.input)
+
+    if not domain_map_path.exists():
+        raise SystemExit(f"Domain map file not found: {domain_map_path}")
+    if not input_path.exists():
+        raise SystemExit(f"Input file not found: {input_path}")
+
+    try:
+        domain_map = load_domain_map(domain_map_path, pack_root=PACK_ROOT)
+    except (ValueError, FileNotFoundError) as exc:
+        raise SystemExit(str(exc))
+
+    print(f"Loaded {len(domain_map)} domain entries from {domain_map_path}")
+    print(f"Loading base model from {base_ref}...")
+    model, tokenizer = load_model(base_ref)
+    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
+    router = DomainPackRouter(
+        manager,
+        domain_map,
+        default_domain=args.default_domain,
+        ttl_seconds=args.ttl_seconds,
+        max_recent_domains=args.max_recent_domains,
+    )
+
+    out_path = Path(args.out) if args.out else None
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if out_path.exists() and not args.append_out:
+            out_path.unlink()
+
+    total = 0
+    forward_total_ms = 0.0
+    with input_path.open("r", encoding="utf-8") as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"Invalid JSON on line {lineno}: {exc}") from exc
+
+            domain = payload.get("domain")
+            prompt = payload.get("prompt") or payload.get("text") or ""
+            route_start = time.time()
+            event = router.route(domain)
+            route_ms = (time.time() - route_start) * 1000.0
+
+            forward_ms = None
+            if args.probe_forward:
+                tokens = _tokenise_prompt(tokenizer, str(prompt), args.max_tokens)
+                start = time.time()
+                logits = model(tokens)
+                mx.eval(logits)
+                forward_ms = (time.time() - start) * 1000.0
+                forward_total_ms += forward_ms
+
+            row = {
+                "line": lineno,
+                "requested_domain": event.requested_domain,
+                "resolved_domain": event.resolved_domain,
+                "action": event.action,
+                "reason": event.reason,
+                "active_domain": event.active_domain,
+                "pack": event.pack,
+                "route_ms": route_ms,
+                "forward_ms": forward_ms,
+            }
+            print(json.dumps(row))
+            if out_path:
+                with out_path.open("a", encoding="utf-8") as out_file:
+                    out_file.write(json.dumps(row) + "\n")
+
+            total += 1
+            if args.sleep_between > 0:
+                time.sleep(args.sleep_between)
+
+    detached = router.force_detach()
+    summary = {
+        "requests": total,
+        "ttl_expirations": router.expirations,
+        "recent_domains": router.recent_domains(),
+        "probe_forward_total_ms": forward_total_ms,
+        "detached_on_exit": detached,
+    }
+    print(json.dumps({"summary": summary}))
+    if out_path:
+        with out_path.open("a", encoding="utf-8") as out_file:
+            out_file.write(json.dumps({"summary": summary}) + "\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="packs", description="Manage GPT-2 LoRA skill packs")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -625,9 +767,21 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--learning-rate", "--lr", dest="learning_rate", type=float, default=1e-4)
     create.add_argument("--sequence-length", type=int, default=128)
     create.add_argument("--seed", type=int, default=42)
+    create.add_argument(
+        "--min-rank",
+        type=_parse_min_rank,
+        default=0,
+        help="Optional minimum rank floor after auto-selection (snapped to allowed ranks)",
+    )
     create.add_argument("--zero-init", action="store_true")
     create.add_argument("--lora-dropout", type=_parse_lora_dropout, default=0.0)
     create.add_argument("--notes", default="")
+    create.add_argument(
+        "--profile",
+        choices=["lite", "heavy"],
+        default="lite",
+        help="Pack profile: lite keeps strict rank/size guardrails, heavy allows larger ranks and pack sizes",
+    )
     create.add_argument("--force", action="store_true")
     create.add_argument(
         "--train-fp16-fallback",
@@ -698,6 +852,41 @@ def build_parser() -> argparse.ArgumentParser:
     eval_batch.add_argument("--out")
     eval_batch.add_argument("--csv")
     eval_batch.set_defaults(func=cmd_eval_batch)
+
+    route = subparsers.add_parser(
+        "route",
+        help="Route request domains to packs with on-demand attach/detach",
+    )
+    route.add_argument(
+        "--base",
+        required=True,
+        help="Base model path or ID",
+    )
+    route.add_argument(
+        "--domain-map",
+        required=True,
+        type=Path,
+        help="JSON mapping domain -> pack reference (or null for core)",
+    )
+    route.add_argument(
+        "--input",
+        required=True,
+        type=Path,
+        help="JSONL requests with fields {domain,prompt} or {domain,text}",
+    )
+    route.add_argument("--ttl-seconds", type=float, default=120.0)
+    route.add_argument("--max-recent-domains", type=int, default=8)
+    route.add_argument("--default-domain", default="core")
+    route.add_argument("--probe-forward", action="store_true")
+    route.add_argument("--max-tokens", type=int, default=128)
+    route.add_argument("--sleep-between", type=float, default=0.0)
+    route.add_argument("--out", type=Path)
+    route.add_argument(
+        "--append-out",
+        action="store_true",
+        help="Append to --out if it exists (default overwrites)",
+    )
+    route.set_defaults(func=cmd_route)
 
     return parser
 

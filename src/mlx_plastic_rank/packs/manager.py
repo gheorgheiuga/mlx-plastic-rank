@@ -12,7 +12,7 @@ import mlx.core as mx
 import numpy as np
 
 from ..rank_select import choose_rank
-from .inspection import ALLOWED_RANKS, size_limit_for
+from .inspection import ALLOWED_RANKS, allowed_ranks_for, size_limit_for
 from .io import PackMetadata, compute_sha256, load_pack, load_pack_metadata
 from .lora import SLICE_MAP, LoRAFusedLinear, SliceLoRA
 
@@ -377,6 +377,7 @@ class LoRAManager:
         strategy: str,
         target_compression: float,
         eps: float = 1e-6,
+        allowed_ranks: tuple[int, ...] | None = None,
     ) -> Tuple[Dict[str, int], Dict[str, float], Dict[str, float]]:
         if strategy not in {"stable", "theorem"}:
             raise PackApplicationError(f"Unsupported rank strategy '{strategy}'")
@@ -388,7 +389,7 @@ class LoRAManager:
         alpha_map: Dict[str, float] = {}
         residuals: Dict[str, float] = {}
 
-        allowed = sorted(ALLOWED_RANKS)
+        allowed = sorted(allowed_ranks or ALLOWED_RANKS)
 
         for target in targets:
             spec = self._target_specs.get(target)
@@ -430,6 +431,7 @@ class LoRAManager:
         rank_map: Dict[str, int] | None = None,
         alpha_map: Dict[str, float] | None = None,
         dropout: float = 0.0,
+        allowed_ranks: tuple[int, ...] | None = None,
     ) -> Dict[str, SliceLoRA]:
         self._ensure_wrapped()
         mx.random.seed(seed)
@@ -441,16 +443,33 @@ class LoRAManager:
             if target not in self._target_specs:
                 raise PackApplicationError(f"Target '{target}' not supported for model type '{self.model_type}'")
 
+        allowed = tuple(sorted(allowed_ranks or ALLOWED_RANKS))
+
+        def _default_rank_for_target(spec: TargetSpec, base_rank: int) -> int:
+            candidate: float
+            if spec.kind == "q":
+                candidate = float(base_rank)
+            elif spec.hidden_size <= 0:
+                candidate = float(base_rank)
+            else:
+                ratio = base_rank * spec.kv_hidden / float(spec.hidden_size)
+                candidate = max(2.0, ratio)
+            candidate_int = int(round(candidate))
+            for chosen in allowed:
+                if chosen >= candidate_int:
+                    return chosen
+            return allowed[-1]
+
         resolved_ranks: Dict[str, int] = {}
         resolved_alphas: Dict[str, float] = {}
         for target in targets:
             spec = self._target_specs[target]
             local_rank = rank_map.get(target)
             if local_rank is None:
-                local_rank = spec.default_rank(rank)
-            if local_rank not in ALLOWED_RANKS:
+                local_rank = _default_rank_for_target(spec, rank)
+            if local_rank not in allowed:
                 raise PackApplicationError(
-                    f"Unsupported LoRA rank {local_rank} for target {target}; allowed ranks {sorted(ALLOWED_RANKS)}"
+                    f"Unsupported LoRA rank {local_rank} for target {target}; allowed ranks {list(allowed)}"
                 )
             default_alpha = alpha if (spec.kind == "q" and target not in alpha_map) else 2.0 * local_rank
             local_alpha = alpha_map.get(target, default_alpha)
@@ -540,7 +559,7 @@ class LoRAManager:
             raise PackApplicationError(
                 f"Base hash mismatch: expected {self.base_hash}, pack built for {metadata.base_hash}"
             )
-        self._validate_rank_alpha(metadata.rank_map, metadata.alpha_map)
+        self._validate_rank_alpha(metadata.rank_map, metadata.alpha_map, profile=metadata.profile)
         tensors = load_pack(tensor_path)
         expected_keys: set[str] = set()
         for key in metadata.rank_map:
@@ -641,11 +660,21 @@ class LoRAManager:
             adapters[key] = adapter
         return adapters
 
-    def _validate_rank_alpha(self, rank_map: Dict[str, int], alpha_map: Dict[str, float]) -> None:
+    def _validate_rank_alpha(
+        self,
+        rank_map: Dict[str, int],
+        alpha_map: Dict[str, float],
+        *,
+        profile: str = "lite",
+    ) -> None:
+        try:
+            allowed_ranks = tuple(sorted(allowed_ranks_for(profile)))
+        except ValueError as exc:
+            raise PackApplicationError(str(exc)) from exc
         for key, rank in rank_map.items():
-            if rank not in ALLOWED_RANKS:
+            if rank not in allowed_ranks:
                 raise PackApplicationError(
-                    f"Unsupported LoRA rank {rank} on {key}; allowed ranks {sorted(ALLOWED_RANKS)}"
+                    f"Unsupported LoRA rank {rank} on {key}; allowed ranks {list(allowed_ranks)}"
                 )
             expected_alpha = 2.0 * rank
             actual_alpha = float(alpha_map.get(key, expected_alpha))
@@ -654,7 +683,14 @@ class LoRAManager:
                     f"LoRA alpha mismatch on {key}: expected {expected_alpha}, found {actual_alpha}"
                 )
 
-    def export_active_pack(self, name: str, base_dir: Path, notes: str = "") -> Tuple[Dict[str, np.ndarray], PackMetadata]:
+    def export_active_pack(
+        self,
+        name: str,
+        base_dir: Path,
+        notes: str = "",
+        *,
+        profile: str = "lite",
+    ) -> Tuple[Dict[str, np.ndarray], PackMetadata]:
         if not self._adapter_registry:
             raise PackApplicationError("No active adapters to export")
         tensors: Dict[str, np.ndarray] = {}
@@ -668,11 +704,12 @@ class LoRAManager:
             tensors[f"{key}.lora.A"] = np.array(adapter.A, dtype=np.float16)
             tensors[f"{key}.lora.B"] = np.array(adapter.B, dtype=np.float16)
             tensors[f"{key}.lora.alpha"] = np.array(adapter.alpha, dtype=np.float32)
-        self._validate_rank_alpha(rank_map, alpha_map)
+        self._validate_rank_alpha(rank_map, alpha_map, profile=profile)
         metadata = PackMetadata(
             pack_name=name,
             base_hash=self.base_hash or "",
             base_model=self.base_model,
+            profile=(profile or "lite").lower(),
             rank_map=rank_map,
             alpha_map=alpha_map,
             target_layers=target_layers,

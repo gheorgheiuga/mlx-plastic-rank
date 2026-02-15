@@ -39,6 +39,15 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 - Evaluate: `uv run packs eval --base qwen3-4b-2507-mlx-4bit --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
 - Batch evaluation with VRAM/latency guardrails lives in `scripts/demo_plasticity_blocks.py`.
 - Compare base vs pack across domains: `uv run packs eval-batch --base qwen3-4b-2507-mlx-4bit --pack domain-demo --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip` (outputs PPL, TPS, first-token ms, VRAM, pack size).
+- Heavy packs (bigger ranks + larger size cap): add `--profile heavy` to `packs create` when you want higher-capacity domain packs loaded on demand from SSD.
+- To force heavier adapters even when auto-rank would stay small, add `--min-rank 16` (or higher; values snap to allowed heavy ranks).
+
+### On-Demand Domain Routing (TTL + LRU)
+Run a core model and attach/detach packs on demand using domain labels:
+- Domain map JSON (example): `{"core": null, "taxi": "bench-r4"}`
+- Requests JSONL (example): `{"domain":"taxi","prompt":"JFK to Midtown fare estimate"}`
+- Runtime (CLI): `uv run packs route --base mlx-community/Qwen2.5-1.5B-Instruct-4bit --domain-map run/domain_map.json --input run/requests.jsonl --ttl-seconds 120 --max-recent-domains 8 --probe-forward --out run/route_log.jsonl`
+- Runtime (script): `uv run python scripts/domain_router_runtime.py --base mlx-community/Qwen2.5-1.5B-Instruct-4bit --domain-map run/domain_map.json --input run/requests.jsonl --ttl-seconds 120 --max-recent-domains 8 --probe-forward --out run/route_log.jsonl`
 
 ## Benchmarks & Utilities
 - Compression baseline: `uv run python scripts/compress_llm_mlx.py --hf mlx-community/qwen3-4b-2507-mlx-4bit --out out/qwen3_mlx_compressed --svd randomized --batch-size 20`

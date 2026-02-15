@@ -19,6 +19,7 @@ class PackMetadata:
     pack_name: str
     base_hash: str
     base_model: str | None = None
+    profile: str = "lite"
     rank_map: Dict[str, int] = field(default_factory=dict)
     alpha_map: Dict[str, float] = field(default_factory=dict)
     target_layers: List[str] = field(default_factory=list)
@@ -49,6 +50,7 @@ class PackMetadata:
             pack_name=str(data.get("pack_name", "")),
             base_hash=str(data.get("base_hash", "")),
             base_model=base_model,
+            profile=str(data.get("profile", "lite") or "lite").lower(),
             rank_map=rank_map,
             alpha_map=alpha_map,
             target_layers=targets,
@@ -62,6 +64,7 @@ class PackMetadata:
             "pack_name": self.pack_name,
             "base_hash": self.base_hash,
             "base_model": self.base_model,
+            "profile": self.profile,
             "rank_map": self.rank_map,
             "alpha_map": self.alpha_map,
             "target_layers": self.target_layers,
