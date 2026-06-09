@@ -138,7 +138,7 @@ Run a core model and attach/detach packs on demand using domain labels:
 - RNG seeds are fixed in tests to keep MLX operations deterministic.
 
 ## Research Footnotes
-[^pop-theorem]: Vasile Pop, "Relations between ranks of matrix polynomials", arXiv:2010.00634 [math.RA], submitted October 1, 2020. Theorem 1 gives a rank identity for matrix polynomials; in this repo it is rank-accounting intuition, not validation that Pop Rank improves LoRA quality.
+[^pop-theorem]: Vasile Pop, "Relations between ranks of matrix polynomials", arXiv:2010.00634 [math.RA], submitted October 1, 2020. See also Vasile Pop and Alexandru Negrescu, "Three New Proofs of the Theorem rank f(M) + rank g(M) = rank (f,g)(M) + rank [f,g](M)", *Mathematics* 2024, 12(3), 360, https://doi.org/10.3390/math12030360. The theorem gives a rank identity for matrix polynomials; in this repo it is rank-accounting intuition, not validation that Pop Rank improves LoRA quality.
 
 [^industrybench]: Alibaba Multimodal Industrial AI, `alibaba-multimodal-industrial-ai/IndustryBench`, MIT-licensed Hugging Face dataset. Its dataset card requests citation of Bai et al. (2026), "IndustryBench: Probing the Industrial Knowledge Boundaries of LLMs", arXiv:2605.10267.
 
