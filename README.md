@@ -1,14 +1,14 @@
 # mlx-plastic-rank
 
-Local low-rank adaptation experiments for MLX. The practical goal is a general-capable base model that can load small domain "skill packs"; the Pop Rank research question is whether LoRA rank can describe useful added capability, not just adapter size.
+Local low-rank adaptation experiments for MLX. The practical goal is a general-capable base model that can load small domain "skill packs"; the Pop Rank research question is whether LoRA rank can describe useful added capability, not just adapter size.[^pop-theorem]
 
 ## Current Thesis
 Static LoRA rank is normally treated as a fixed hyperparameter. Pop Rank explores a different path: let training discover where adapter capacity is useful, measure that rank allocation, and then test whether the discovered heterogeneous map can deliver similar quality with fewer exported adapter bytes.
 
-This is still research. The repo now has working mechanics for dynamic active-rank gates, frozen heterogeneous continuation, fresh training from a discovered rank map, and a rank ledger for measuring effective rank, slack, and pack overlap. The current evidence is quality-positive on one local industrial-domain experiment; it is not proof of a general theorem.
+This is still research. The repo now has working mechanics for dynamic active-rank gates, frozen heterogeneous continuation, fresh training from a discovered rank map, and a rank ledger for measuring effective rank, slack, and pack overlap. The current evidence is quality-positive on one local industrial-domain experiment; it is not proof of a general theorem.[^pop-theorem]
 
 ## Current Best Signal
-Fault-code maintenance pack experiment on `mlx-community/gemma-4-12B-it-qat-mxfp8`, evaluated with 300 answer-only held-out samples and 8 generation-check examples:
+Fault-code maintenance pack experiment on `mlx-community/gemma-4-12B-it-qat-mxfp8`, evaluated with 300 answer-only held-out samples and 8 generation-check examples:[^fault-codes]
 
 | Model/pack | Size | Effective rank | Answer PPL | Token Acc. | Generation solution-overlap |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -68,14 +68,14 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 - To continue a trained heterogeneous pack with fixed ranks, use `--resume-pack SOURCE_PACK`. To train fresh weights from a discovered heterogeneous rank map, use `--rank-map-from-pack SOURCE_PACK`.
 
 ### IndustryBench Pilot
-Use Alibaba's IndustryBench as a small industrial QA pack probe. The extractor keeps source metadata in JSON fields while letting the training text stay clean.
+Use Alibaba's IndustryBench as a small industrial QA pack probe.[^industrybench] The extractor keeps source metadata in JSON fields while letting the training text stay clean.
 - Extract a small English split: `uv run python scripts/industrybench_extract.py --language en --source-limit 512 --train-size 128 --eval-size 32 --metadata-mode none --train-out data/industrybench_en_train.jsonl --eval-out data/industrybench_en_eval.jsonl`
 - Baseline IT QAT eval: `uv run --extra packs packs eval --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --data-path data/industrybench_en_eval.jsonl --chat-template --sequence-length 256 --num-samples 32 --batch-size 1 --out out/industrybench_gemma4_it_baseline.json --csv out/industrybench_gemma4_it_baseline.csv`
 - No-shrink heavy pilot pack: `uv run --extra packs packs create --name industrybench-en-gemma4-it-heavy-smoke --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/industrybench_en_train.jsonl --chat-template --steps 20 --batch-size 1 --sequence-length 256 --learning-rate 1e-5 --target-compression 0.7 --profile heavy`
 - First result: the pack exported and applied successfully, with q/v rank 64, k rank 32, and size 91.75 MB. On the 32-row held-out split it changed logits (`max_logit_diff=3.0`) but worsened PPL by 1.45%, so this is an end-to-end mechanics proof, not a quality win.
 
 ### Industrial Fault-Code Pilot
-Use `avneetsingla/industrial-fault-codes-sample` for the first practical industrial maintenance pack. It has 3,000 English fault-code rows with `brand`, `code`, `description`, and `solution` fields. License is `cc-by-nc-4.0`, so treat this as research/prototyping data unless licensing is resolved.
+Use `avneetsingla/industrial-fault-codes-sample` for the first practical industrial maintenance pack.[^fault-codes] It has 3,000 English fault-code rows with `brand`, `code`, `description`, and `solution` fields. License is `cc-by-nc-4.0`, so treat this as research/prototyping data unless licensing is resolved.
 - Extract train/eval JSONL: `uv run python scripts/fault_codes_extract.py --train-size 2400 --eval-size 300 --train-out data/fault_codes_train.jsonl --eval-out data/fault_codes_eval.jsonl`
 - Baseline answer-only eval: `uv run --extra packs packs eval --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --data-path data/fault_codes_eval.jsonl --chat-template --loss-mode answer --sequence-length 256 --num-samples 300 --batch-size 4 --out out/fault_codes_gemma4_it_answer_baseline_300.json --csv out/fault_codes_gemma4_it_answer_baseline_300.csv`
 - Rank-16 pilot pack: `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-r16-100 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 100 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 16 --profile heavy --lora-dropout 0.05`
@@ -136,6 +136,13 @@ Run a core model and attach/detach packs on demand using domain labels:
 - `packs` commands require `mlx-lm`; Gemma 4 any-to-any support also requires `mlx-vlm`, and speech IO support uses `mlx-audio` (all install with `uv pip install -e '.[packs]'`).
 - Packs enforce `.lora.{A,B,alpha}` tensor schema, fp16 matrices, and fp32 alpha. Lite packs default to a 10 MB cap; heavy packs allow larger SSD-loaded adapters.
 - RNG seeds are fixed in tests to keep MLX operations deterministic.
+
+## Research Footnotes
+[^pop-theorem]: Vasile Pop, "Relations between ranks of matrix polynomials", arXiv:2010.00634 [math.RA], submitted October 1, 2020. Theorem 1 gives a rank identity for matrix polynomials; in this repo it is rank-accounting intuition, not validation that Pop Rank improves LoRA quality.
+
+[^industrybench]: Alibaba Multimodal Industrial AI, `alibaba-multimodal-industrial-ai/IndustryBench`, MIT-licensed Hugging Face dataset. Its dataset card requests citation of Bai et al. (2026), "IndustryBench: Probing the Industrial Knowledge Boundaries of LLMs", arXiv:2605.10267.
+
+[^fault-codes]: Avneet Singla, `avneetsingla/industrial-fault-codes-sample`, Hugging Face dataset tagged `cc-by-nc-4.0`. Treat experiments or packs trained on this source as research/prototype artifacts unless separate commercial rights are resolved.
 
 ## License
 Licensed under the [MIT License](LICENSE). See [NOTICE.md](NOTICE.md) for
