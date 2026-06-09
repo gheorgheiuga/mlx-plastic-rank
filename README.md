@@ -74,6 +74,13 @@ Use `avneetsingla/industrial-fault-codes-sample` for the first practical industr
 
 Best current result: `fault-codes-gemma4-it-answer-r32-300`. Rank 16 / 300 is the best smaller pack by PPL-per-MB, but rank 32 / 300 is the first pack that improves both full-token eval and generated solution-keyword overlap.
 
+### Pop-Theorem Rank Ledger
+Use the rank ledger to measure the algebraic footprint of a pack before claiming that rank selection improved. It reconstructs each LoRA update in compressed form and reports effective rank, slack, stable rank, per-target rank budget, and pairwise pack overlap/composition.
+- Inspect one pack: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_ledger_r32_300.json --csv out/fault_codes_rank_ledger_r32_300.csv`
+- Compare two packs: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r16-300 --compare fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_compare_r16_300_vs_r32_300.json --csv out/fault_codes_rank_compare_r16_300_vs_r32_300.csv`
+
+First ledger readout: `r32/300` has 136 adapters, declared rank 4352, effective rank 4352, and zero rank slack. Compared with `r16/300`, the shared adapters compose additively: left effective rank 2176, right effective rank 4352, composition rank 6528, rank savings 0, row/column overlap 0, mean absolute Frobenius cosine about 0.0097. The stronger pack is adding mostly new rank directions rather than duplicating the smaller pack.
+
 ### On-Demand Domain Routing (TTL + LRU)
 Run a core model and attach/detach packs on demand using domain labels:
 - Domain map JSON (example): `{"core": null, "taxi": "bench-r4"}`

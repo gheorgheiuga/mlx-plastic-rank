@@ -21,6 +21,12 @@ from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_o
 from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize_pack
 from .io import compute_sha256, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
+from .rank_ledger import (
+    compare_pack_rank_ledgers,
+    comparison_rows_for_csv,
+    ledger_rows_for_csv,
+    pack_rank_ledger,
+)
 from .router import DomainPackRouter, load_domain_map
 from .train import TrainingConfig, model_logits, train_lora, train_lora_supervised
 
@@ -497,6 +503,46 @@ def cmd_inspect(args: argparse.Namespace) -> None:
         expected_bytes += params * 2 + 4  # fp16 params + fp32 alpha
     print(f"Expected params (LoRA fp16): {expected_params}")
     print(f"Expected size estimate: {expected_bytes} bytes ({expected_bytes / (1024**2):.2f} MB)")
+
+
+def _write_csv_rows(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def cmd_rank_ledger(args: argparse.Namespace) -> None:
+    pack_dir = _default_pack_dir(args.name)
+    if not pack_dir.exists():
+        raise SystemExit(f"Pack '{args.name}' not found at {pack_dir}")
+
+    if args.compare:
+        compare_dir = _default_pack_dir(args.compare)
+        if not compare_dir.exists():
+            raise SystemExit(f"Pack '{args.compare}' not found at {compare_dir}")
+        report = compare_pack_rank_ledgers(pack_dir, compare_dir, rank_tol=args.rank_tol)
+        csv_rows = comparison_rows_for_csv(report)
+    else:
+        report = pack_rank_ledger(pack_dir, rank_tol=args.rank_tol)
+        csv_rows = ledger_rows_for_csv(report)
+
+    print(json.dumps(report, indent=2))
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"Rank ledger written to {out_path}")
+
+    if args.csv:
+        csv_path = Path(args.csv)
+        _write_csv_rows(csv_path, csv_rows)
+        print(f"Rank ledger CSV written to {csv_path}")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -1016,6 +1062,25 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = subparsers.add_parser("inspect", help="Inspect pack tensor shapes and sizes")
     inspect.add_argument("--name", required=True)
     inspect.set_defaults(func=cmd_inspect)
+
+    rank_ledger = subparsers.add_parser(
+        "rank-ledger",
+        help="Measure effective rank, slack, and overlap for LoRA pack operators",
+    )
+    rank_ledger.add_argument("--name", required=True, help="Pack name under packs/")
+    rank_ledger.add_argument(
+        "--compare",
+        help="Optional second pack name to compare against --name",
+    )
+    rank_ledger.add_argument(
+        "--rank-tol",
+        type=float,
+        default=1e-5,
+        help="Relative singular-value tolerance for numerical rank",
+    )
+    rank_ledger.add_argument("--out", help="Write JSON ledger to this path")
+    rank_ledger.add_argument("--csv", help="Write adapter/pair rows to this CSV path")
+    rank_ledger.set_defaults(func=cmd_rank_ledger)
 
     list_cmd = subparsers.add_parser("list", help="List available packs")
     list_cmd.set_defaults(func=cmd_list)

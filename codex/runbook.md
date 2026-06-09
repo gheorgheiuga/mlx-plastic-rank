@@ -52,6 +52,10 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
     | r32 / 300 steps | 54.16 MB | 8.5175 | -44.80% | 0.6513 | 0.3619 |
 
   - Result: `fault-codes-gemma4-it-answer-r32-300` is the best current quality pack. `r16/300` is the best smaller pack by PPL-per-MB, but `r32/300` is the first pack that improves both full-token eval and generated solution-keyword overlap.
+- Pop-theorem rank ledger:
+  - Inspect pack rank budget: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_ledger_r32_300.json --csv out/fault_codes_rank_ledger_r32_300.csv`
+  - Compare pack overlap/composition: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r16-300 --compare fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_compare_r16_300_vs_r32_300.json --csv out/fault_codes_rank_compare_r16_300_vs_r32_300.csv`
+  - First readout: `r32/300` has 136 adapters, declared rank 4352, effective rank 4352, zero rank slack, and 13,041 bytes per effective rank. Compared with `r16/300`, composition rank is additive (2176 + 4352 = 6528), rank savings is 0, row/column overlap is 0, and mean absolute Frobenius cosine is about 0.0097. The extra `r32` capacity is mostly new rank direction, not duplicated `r16` direction.
 - Compression baseline: `uv run python scripts/compress_llm_mlx.py --hf mlx-community/gemma-4-12B-mxfp8 --out out/gemma4_mxfp8_compressed --svd randomized --batch-size 20`
 - QA: `uv run pytest -q`, `uv run ruff check`, `uv run mypy`
 

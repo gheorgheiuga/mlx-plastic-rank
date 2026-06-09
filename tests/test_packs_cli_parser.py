@@ -122,6 +122,30 @@ def test_eval_parser_accepts_answer_loss_mode():
     assert args.loss_mode == "answer"
 
 
+def test_rank_ledger_parser_accepts_compare_and_outputs():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "rank-ledger",
+            "--name",
+            "fault-codes-a",
+            "--compare",
+            "fault-codes-b",
+            "--rank-tol",
+            "1e-4",
+            "--out",
+            "out/ledger.json",
+            "--csv",
+            "out/ledger.csv",
+        ]
+    )
+    assert args.name == "fault-codes-a"
+    assert args.compare == "fault-codes-b"
+    assert args.rank_tol == 1e-4
+    assert args.out == "out/ledger.json"
+    assert args.csv == "out/ledger.csv"
+
+
 def test_create_parser_rejects_invalid_dropout():
     parser = build_parser()
     with pytest.raises(SystemExit):

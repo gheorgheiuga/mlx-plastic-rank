@@ -15,3 +15,7 @@ Track open and closed Decision Support Notes here for quick discovery. Link each
 - **DSN-20260608-01** — Target Gemma 4 12B mxfp8 for unified any-to-any packs *(Accepted)*
   - Summary: Uses mxfp8 as the default Gemma 4 runtime base, keeps bf16 for reference, makes `mlx-vlm`/`mlx-audio` the macOS modality stack, records IndustryBench as mechanics-positive but quality-negative, and selects `fault-codes-gemma4-it-answer-r32-300` as the first useful industrial pack candidate.
   - Link: `codex/dsn/dsn-20260608-gemma4-12b.md`
+
+- **DSN-20260609-01** — Measure pack rank algebra before claiming theorem advantage *(Accepted)*
+  - Summary: Adds `packs rank-ledger` to measure effective rank, rank slack, composition rank, row/column overlap, and rank savings before claiming Pop-theorem rank selection benefits.
+  - Link: `codex/dsn/dsn-20260609-pop-rank-ledger.md`
