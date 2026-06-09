@@ -89,7 +89,8 @@ __pycache__/
 # Generated artifacts
 /out/
 /packs/
-/data/
+/data/*
+!/data/README.md
 *.safetensors
 
 # Research scratch

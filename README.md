@@ -138,4 +138,5 @@ Run a core model and attach/detach packs on demand using domain labels:
 - RNG seeds are fixed in tests to keep MLX operations deterministic.
 
 ## License
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE). See [NOTICE.md](NOTICE.md) for
+third-party dataset/model attribution and generated-data license notes.

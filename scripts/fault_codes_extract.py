@@ -12,6 +12,9 @@ from typing import Any, Iterable
 
 DATASET_ID = "avneetsingla/industrial-fault-codes-sample"
 DATASET_SERVER = "https://datasets-server.huggingface.co"
+DATASET_URL = f"https://huggingface.co/datasets/{DATASET_ID}"
+DATASET_LICENSE = "CC BY-NC 4.0"
+DATASET_LICENSE_URL = "https://creativecommons.org/licenses/by-nc/4.0/"
 
 
 def clean_text(value: Any) -> str:
@@ -96,6 +99,19 @@ def build_answer(row: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def dataset_notice(dataset: str) -> dict[str, str]:
+    notice = {"source_dataset_url": f"https://huggingface.co/datasets/{dataset}"}
+    if dataset == DATASET_ID:
+        notice.update(
+            {
+                "source_license": DATASET_LICENSE,
+                "source_license_url": DATASET_LICENSE_URL,
+                "source_attribution": DATASET_ID,
+            }
+        )
+    return notice
+
+
 def build_example(row: dict[str, Any], dataset: str) -> dict[str, Any] | None:
     code = clean_text(row.get("code"))
     brand = clean_text(row.get("brand"))
@@ -110,6 +126,7 @@ def build_example(row: dict[str, Any], dataset: str) -> dict[str, Any] | None:
     return {
         "id": source_id,
         "source_dataset": dataset,
+        **dataset_notice(dataset),
         "source_row_idx": row.get("_row_idx"),
         "code": code,
         "brand": brand,
@@ -201,6 +218,7 @@ def main() -> None:
     )
     summary = {
         "dataset": args.dataset,
+        **dataset_notice(args.dataset),
         "source_rows": len(rows),
         "examples": len(examples),
         "train_rows": len(train_rows),

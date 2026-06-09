@@ -28,4 +28,5 @@ Link issues (e.g., `Closes #123`) and related PRs.
 
 - [ ] Follows coding style and naming conventions
 - [ ] Updates docs/AGENTS.md if needed
+- [ ] Updates `NOTICE.md` / generated-data attribution when datasets, models, or copied third-party material change
 - [ ] Keeps commits scoped and conventional (e.g., `feat(rank): ...`)
