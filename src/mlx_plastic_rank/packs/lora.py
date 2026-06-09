@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Tuple
 
 import mlx.core as mx
 import mlx.nn as nn
+import numpy as np
 
 
 @dataclass
@@ -23,6 +24,7 @@ class SliceLoRA:
     B: mx.array
     input_dim: int
     output_dim: int
+    gates: mx.array | None = None
 
     def as_arrays(self) -> Tuple[mx.array, mx.array]:
         return self.A, self.B
@@ -35,11 +37,34 @@ class SliceLoRA:
     def scale(self) -> float:
         return self.alpha / max(self.rank, 1)
 
+    @property
+    def active_rank(self) -> int:
+        if self.gates is None:
+            return self.rank
+        gates = np.array(self.gates)
+        return int(np.sum(gates > 0.5))
+
+    def set_active_rank(self, active_rank: int) -> None:
+        if active_rank <= 0 or active_rank > self.rank:
+            raise ValueError(f"Active rank must be in [1, {self.rank}], got {active_rank}")
+        values = np.zeros((self.rank,), dtype=np.float32)
+        values[:active_rank] = 1.0
+        self.gates = mx.array(values, dtype=mx.float32)
+
+    def export_arrays(self) -> Tuple[mx.array, mx.array, float, int]:
+        export_rank = self.active_rank
+        A = self.A[:, :export_rank]
+        B = self.B[:export_rank, :]
+        export_alpha = 0.0 if self.alpha == 0.0 else self.scale * export_rank
+        return A, B, float(export_alpha), export_rank
+
     def delta(self, x: mx.array) -> mx.array:
         x_fp32 = x.astype(mx.float32)
         B_fp32 = self.B.astype(mx.float32)
         A_fp32 = self.A.astype(mx.float32)
         projected = mx.matmul(x_fp32, B_fp32.T)
+        if self.gates is not None:
+            projected = projected * self.gates.astype(projected.dtype)
         delta = mx.matmul(projected, A_fp32.T)
         scaled = self.scale * delta
         return scaled.astype(x.dtype)

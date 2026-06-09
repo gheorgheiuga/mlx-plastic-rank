@@ -335,6 +335,61 @@ def test_gemma_unified_uses_block_local_projection_geometry():
     assert adapters["blocks.1.attn.k_proj"].A.shape == (4, 2)
 
 
+def test_dynamic_rank_initialises_gated_active_rank_and_exports_active_columns(tmp_path):
+    model = SeparateModel(layers=1, hidden=8)
+    manager = LoRAManager(model)
+    adapters = manager.initialize_adapters(
+        targets=["attn.q_proj"],
+        rank=4,
+        alpha=8.0,
+        seed=0,
+        initial_active_rank=2,
+    )
+    adapter = adapters["blocks.0.attn.q_proj"]
+
+    assert adapter.rank == 4
+    assert adapter.active_rank == 2
+    tensors, metadata = manager.export_active_pack("dynamic-demo", tmp_path)
+
+    assert metadata.rank_map["blocks.0.attn.q_proj"] == 2
+    assert metadata.alpha_map["blocks.0.attn.q_proj"] == 4.0
+    assert tensors["blocks.0.attn.q_proj.lora.A"].shape == (8, 2)
+    assert tensors["blocks.0.attn.q_proj.lora.B"].shape == (2, 8)
+
+
+def test_dynamic_rank_adjusts_only_high_signal_adapters():
+    model = SeparateModel(layers=2, hidden=8)
+    manager = LoRAManager(model)
+    adapters = manager.initialize_adapters(
+        targets=["attn.q_proj"],
+        rank=4,
+        alpha=8.0,
+        seed=0,
+        initial_active_rank=2,
+    )
+    high = adapters["blocks.0.attn.q_proj"]
+    low = adapters["blocks.1.attn.q_proj"]
+    high.A = mx.ones_like(high.A)
+    low.A = mx.zeros_like(low.A)
+
+    events = manager.adjust_dynamic_ranks(
+        allowed_ranks=(2, 4),
+        min_rank=2,
+        grow_threshold=0.25,
+        prune_threshold=0.03,
+    )
+
+    assert high.active_rank == 4
+    assert low.active_rank == 2
+    assert len(events) == 1
+    assert events[0]["adapter"] == "blocks.0.attn.q_proj"
+    assert events[0]["action"] == "grow"
+    assert events[0]["from_rank"] == 2
+    assert events[0]["to_rank"] == 4
+    assert events[0]["max_rank"] == 4
+    assert events[0]["signal"] == pytest.approx(events[0]["global_signal"])
+
+
 def test_compute_auto_ranks_with_theorem():
     model = SeparateModel(hidden=4)
     block = model.model.layers[0]

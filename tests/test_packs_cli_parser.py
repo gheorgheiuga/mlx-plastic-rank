@@ -218,6 +218,44 @@ def test_create_parser_accepts_explicit_rank():
     assert args.rank == 8
 
 
+def test_create_parser_accepts_dynamic_rank_controls():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "create",
+            "--name",
+            "dynamic-demo",
+            "--base",
+            "mlx-community/gemma-4-12B-it-qat-mxfp8",
+            "--data",
+            "data/fault_codes_train.jsonl",
+            "--rank",
+            "32",
+            "--dynamic-rank",
+            "--dynamic-initial-rank",
+            "4",
+            "--dynamic-min-rank",
+            "2",
+            "--dynamic-rank-interval",
+            "25",
+            "--dynamic-rank-warmup",
+            "50",
+            "--dynamic-grow-threshold",
+            "0.4",
+            "--dynamic-prune-threshold",
+            "0.05",
+        ]
+    )
+    assert args.rank == 32
+    assert args.dynamic_rank is True
+    assert args.dynamic_initial_rank == 4
+    assert args.dynamic_min_rank == 2
+    assert args.dynamic_rank_interval == 25
+    assert args.dynamic_rank_warmup == 50
+    assert args.dynamic_grow_threshold == 0.4
+    assert args.dynamic_prune_threshold == 0.05
+
+
 def test_create_parser_rejects_zero_explicit_rank():
     parser = build_parser()
     with pytest.raises(SystemExit):

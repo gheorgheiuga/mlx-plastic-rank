@@ -19,3 +19,7 @@ Track open and closed Decision Support Notes here for quick discovery. Link each
 - **DSN-20260609-01** — Measure pack rank algebra before claiming theorem advantage *(Accepted)*
   - Summary: Adds `packs rank-ledger` to measure effective rank, rank slack, composition rank, row/column overlap, and rank savings before claiming Pop-theorem rank selection benefits.
   - Link: `codex/dsn/dsn-20260609-pop-rank-ledger.md`
+
+- **DSN-20260609-02** — Implement dynamic Pop Rank with gated active ranks *(Accepted)*
+  - Summary: Makes `--rank` a training ceiling via active-rank gates, grows/shrinks adapters by learned rank signal, and exports only active columns.
+  - Link: `codex/dsn/dsn-20260609-dynamic-pop-rank.md`

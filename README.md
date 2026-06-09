@@ -81,6 +81,14 @@ Use the rank ledger to measure the algebraic footprint of a pack before claiming
 
 First ledger readout: `r32/300` has 136 adapters, declared rank 4352, effective rank 4352, and zero rank slack. Compared with `r16/300`, the shared adapters compose additively: left effective rank 2176, right effective rank 4352, composition rank 6528, rank savings 0, row/column overlap 0, mean absolute Frobenius cosine about 0.0097. The stronger pack is adding mostly new rank directions rather than duplicating the smaller pack.
 
+### Dynamic Pop Rank
+Use dynamic rank when you want the pack to start small and earn capacity during training. The requested `--rank` becomes the maximum rank; `--dynamic-initial-rank` sets the active rank prefix; train-time rank signals grow high-utility adapters and leave low-utility adapters small. Export writes only active rank columns, so the final pack can be smaller than its training ceiling.
+
+Example fault-code run:
+`uv run --extra packs packs create --name fault-codes-gemma4-it-answer-dynamic-r32-init4-300 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 300 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 32 --profile heavy --lora-dropout 0.05 --dynamic-rank --dynamic-initial-rank 4 --dynamic-rank-warmup 50 --dynamic-rank-interval 25 --dynamic-grow-threshold 0.25 --dynamic-prune-threshold 0.03`
+
+This mode is implemented and unit-tested; it still needs a real Gemma fault-code bakeoff against fixed `r16`/`r32` before claiming quality-per-MB wins.
+
 ### On-Demand Domain Routing (TTL + LRU)
 Run a core model and attach/detach packs on demand using domain labels:
 - Domain map JSON (example): `{"core": null, "taxi": "bench-r4"}`

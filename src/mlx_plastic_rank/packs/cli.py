@@ -321,6 +321,11 @@ def cmd_create(args: argparse.Namespace) -> None:
     base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
 
     print(f"Initialising adapters on layers: {canonical_layers}")
+    if args.dynamic_rank:
+        print(
+            "Dynamic rank enabled: "
+            f"max ranks={rank_map} initial_active_rank={args.dynamic_initial_rank}"
+        )
     adapters = manager.initialize_adapters(
         canonical_layers,
         rank=base_rank,
@@ -330,6 +335,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         alpha_map=alpha_map,
         dropout=args.lora_dropout,
         allowed_ranks=allowed_ranks,
+        initial_active_rank=args.dynamic_initial_rank if args.dynamic_rank else None,
     )
     if args.zero_init:
         for adapter in adapters.values():
@@ -343,6 +349,13 @@ def cmd_create(args: argparse.Namespace) -> None:
         sequence_length=args.sequence_length,
         log_interval=max(1, args.steps // 10),
         lora_dropout=args.lora_dropout,
+        dynamic_rank=args.dynamic_rank,
+        dynamic_rank_interval=args.dynamic_rank_interval,
+        dynamic_rank_warmup=args.dynamic_rank_warmup,
+        dynamic_rank_min=args.dynamic_min_rank,
+        dynamic_rank_grow_threshold=args.dynamic_grow_threshold,
+        dynamic_rank_prune_threshold=args.dynamic_prune_threshold,
+        dynamic_rank_allowed_ranks=allowed_ranks,
     )
     print(
         f"Training LoRA adapters: steps={config.steps} batch_size={config.batch_size} "
@@ -1023,6 +1036,47 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create.add_argument("--zero-init", action="store_true")
     create.add_argument("--lora-dropout", type=_parse_lora_dropout, default=0.0)
+    create.add_argument(
+        "--dynamic-rank",
+        action="store_true",
+        help="Train with gated active rank and export only active rank columns.",
+    )
+    create.add_argument(
+        "--dynamic-initial-rank",
+        type=_parse_rank,
+        default=4,
+        help="Initial active rank when --dynamic-rank is enabled.",
+    )
+    create.add_argument(
+        "--dynamic-min-rank",
+        type=_parse_rank,
+        default=2,
+        help="Minimum active rank per adapter when dynamic rank can shrink.",
+    )
+    create.add_argument(
+        "--dynamic-rank-interval",
+        type=int,
+        default=50,
+        help="Training steps between dynamic rank adjustments.",
+    )
+    create.add_argument(
+        "--dynamic-rank-warmup",
+        type=int,
+        default=50,
+        help="Training steps before dynamic rank adjustments start.",
+    )
+    create.add_argument(
+        "--dynamic-grow-threshold",
+        type=float,
+        default=0.25,
+        help="Grow adapters whose rank signal is at least this fraction of the strongest adapter.",
+    )
+    create.add_argument(
+        "--dynamic-prune-threshold",
+        type=float,
+        default=0.03,
+        help="Shrink adapters whose rank signal is at most this fraction of the strongest adapter.",
+    )
     create.add_argument("--notes", default="")
     create.add_argument(
         "--profile",

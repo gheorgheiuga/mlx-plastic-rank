@@ -544,6 +544,7 @@ class LoRAManager:
         alpha_map: Dict[str, float] | None = None,
         dropout: float = 0.0,
         allowed_ranks: tuple[int, ...] | None = None,
+        initial_active_rank: int | None = None,
     ) -> Dict[str, SliceLoRA]:
         self._ensure_wrapped()
         mx.random.seed(seed)
@@ -571,6 +572,15 @@ class LoRAManager:
                 if chosen >= candidate_int:
                     return chosen
             return allowed[-1]
+
+        def _snap_active_rank(requested: int, max_rank: int) -> int:
+            candidates = [candidate for candidate in allowed if candidate <= max_rank]
+            if not candidates:
+                return max_rank
+            for candidate in candidates:
+                if candidate >= requested:
+                    return candidate
+            return candidates[-1]
 
         resolved_ranks: Dict[str, int] = {}
         resolved_alphas: Dict[str, float] = {}
@@ -631,11 +641,18 @@ class LoRAManager:
                     input_dim=input_dim,
                     output_dim=output_dim,
                 )
+                if initial_active_rank is not None:
+                    adapter.set_active_rank(_snap_active_rank(initial_active_rank, local_rank))
                 wrapper.add_adapter(adapter)
                 adapters[adapter.name] = adapter
                 self._adapter_registry[adapter.name] = adapter
+                active_note = (
+                    f" active_rank={adapter.active_rank}"
+                    if adapter.gates is not None
+                    else ""
+                )
                 print(
-                    f"Initialised LoRA slice {adapter.name}: kind={spec.kind} rank={adapter.rank} alpha={adapter.alpha} slice=({adapter.start},{adapter.end})"
+                    f"Initialised LoRA slice {adapter.name}: kind={spec.kind} rank={adapter.rank}{active_note} alpha={adapter.alpha} slice=({adapter.start},{adapter.end})"
                 )
         self._active_pack = None
         for target in targets:
@@ -644,6 +661,91 @@ class LoRAManager:
                     f"Target '{target}' was not found on any transformer block"
                 )
         return adapters
+
+    @staticmethod
+    def _adapter_rank_signal(adapter: SliceLoRA) -> float:
+        active_rank = adapter.active_rank
+        if active_rank <= 0:
+            return 0.0
+        A = np.array(adapter.A[:, :active_rank], dtype=np.float32)
+        B = np.array(adapter.B[:active_rank, :], dtype=np.float32)
+        if A.size == 0 or B.size == 0:
+            return 0.0
+        column_norms = np.linalg.norm(A, axis=0)
+        row_norms = np.linalg.norm(B, axis=1)
+        utilities = column_norms * row_norms
+        return float(np.sum(utilities))
+
+    @staticmethod
+    def _active_rank_choices(
+        adapter: SliceLoRA,
+        allowed_ranks: tuple[int, ...],
+        min_rank: int,
+    ) -> list[int]:
+        allowed = sorted(rank for rank in allowed_ranks if rank <= adapter.rank)
+        if not allowed:
+            return [adapter.rank]
+        floor = min_rank
+        candidates = [rank for rank in allowed if rank >= floor]
+        if candidates:
+            return candidates
+        return [allowed[0]]
+
+    def adjust_dynamic_ranks(
+        self,
+        *,
+        allowed_ranks: tuple[int, ...],
+        min_rank: int,
+        grow_threshold: float,
+        prune_threshold: float,
+    ) -> list[dict[str, Any]]:
+        """Grow or shrink gated active ranks based on per-adapter signal."""
+
+        gated_adapters = [
+            adapter
+            for adapter in self._adapter_registry.values()
+            if adapter.gates is not None
+        ]
+        if not gated_adapters:
+            return []
+
+        signals = {adapter.name: self._adapter_rank_signal(adapter) for adapter in gated_adapters}
+        global_signal = max(signals.values(), default=0.0)
+        if global_signal <= 0.0:
+            return []
+
+        events: list[dict[str, Any]] = []
+        grow_bar = max(0.0, grow_threshold) * global_signal
+        prune_bar = max(0.0, prune_threshold) * global_signal
+        for adapter in gated_adapters:
+            choices = self._active_rank_choices(adapter, allowed_ranks, min_rank)
+            active = adapter.active_rank
+            if active not in choices:
+                choices = sorted(set(choices + [active]))
+            idx = choices.index(active)
+            signal = signals[adapter.name]
+            next_rank = active
+            action = "keep"
+            if signal <= prune_bar and idx > 0:
+                next_rank = choices[idx - 1]
+                action = "shrink"
+            elif signal >= grow_bar and idx < len(choices) - 1:
+                next_rank = choices[idx + 1]
+                action = "grow"
+
+            if next_rank != active:
+                adapter.set_active_rank(next_rank)
+                event = {
+                    "adapter": adapter.name,
+                    "action": action,
+                    "from_rank": active,
+                    "to_rank": next_rank,
+                    "max_rank": adapter.rank,
+                    "signal": signal,
+                    "global_signal": global_signal,
+                }
+                events.append(event)
+        return events
 
     def trainable_parameters(self) -> List[mx.array]:
         params: List[mx.array] = []
@@ -820,12 +922,13 @@ class LoRAManager:
         alpha_map: Dict[str, float] = {}
         target_layers: List[str] = []
         for key, adapter in self._adapter_registry.items():
-            rank_map[key] = adapter.rank
-            alpha_map[key] = adapter.alpha
+            export_A, export_B, export_alpha, export_rank = adapter.export_arrays()
+            rank_map[key] = export_rank
+            alpha_map[key] = export_alpha
             target_layers.append(key)
-            tensors[f"{key}.lora.A"] = np.array(adapter.A, dtype=np.float16)
-            tensors[f"{key}.lora.B"] = np.array(adapter.B, dtype=np.float16)
-            tensors[f"{key}.lora.alpha"] = np.array(adapter.alpha, dtype=np.float32)
+            tensors[f"{key}.lora.A"] = np.array(export_A, dtype=np.float16)
+            tensors[f"{key}.lora.B"] = np.array(export_B, dtype=np.float16)
+            tensors[f"{key}.lora.alpha"] = np.array(export_alpha, dtype=np.float32)
         self._validate_rank_alpha(rank_map, alpha_map, profile=profile)
         metadata = PackMetadata(
             pack_name=name,

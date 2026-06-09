@@ -20,6 +20,13 @@ class TrainingConfig:
     sequence_length: int = 128
     log_interval: int = 100
     lora_dropout: float = 0.0
+    dynamic_rank: bool = False
+    dynamic_rank_interval: int = 50
+    dynamic_rank_warmup: int = 50
+    dynamic_rank_min: int = 2
+    dynamic_rank_grow_threshold: float = 0.25
+    dynamic_rank_prune_threshold: float = 0.03
+    dynamic_rank_allowed_ranks: tuple[int, ...] = ()
 
 
 def extract_logits(output):
@@ -70,6 +77,7 @@ def train_lora(
         loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
         param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
         manager.set_trainable_parameters(param_arrays)
+        _maybe_adjust_dynamic_ranks(manager, config, step)
         if step % config.log_interval == 0 or step == config.steps:
             elapsed = time.time() - start
             print(f"step {step}/{config.steps} loss={float(loss):.4f} elapsed={elapsed:.1f}s")
@@ -108,8 +116,35 @@ def train_lora_supervised(
         loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
         param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
         manager.set_trainable_parameters(param_arrays)
+        _maybe_adjust_dynamic_ranks(manager, config, step)
         if step % config.log_interval == 0 or step == config.steps:
             elapsed = time.time() - start
             print(f"step {step}/{config.steps} supervised_loss={float(loss):.4f} elapsed={elapsed:.1f}s")
     manager.set_dropout(0.0)
     return float(loss)
+
+
+def _maybe_adjust_dynamic_ranks(
+    manager: LoRAManager,
+    config: TrainingConfig,
+    step: int,
+) -> None:
+    if not config.dynamic_rank:
+        return
+    if step < config.dynamic_rank_warmup:
+        return
+    if config.dynamic_rank_interval <= 0 or step % config.dynamic_rank_interval != 0:
+        return
+    events = manager.adjust_dynamic_ranks(
+        allowed_ranks=config.dynamic_rank_allowed_ranks,
+        min_rank=config.dynamic_rank_min,
+        grow_threshold=config.dynamic_rank_grow_threshold,
+        prune_threshold=config.dynamic_rank_prune_threshold,
+    )
+    for event in events:
+        print(
+            "dynamic-rank "
+            f"step={step} adapter={event['adapter']} action={event['action']} "
+            f"rank={event['from_rank']}->{event['to_rank']} "
+            f"signal={event['signal']:.4g} global={event['global_signal']:.4g}"
+        )
