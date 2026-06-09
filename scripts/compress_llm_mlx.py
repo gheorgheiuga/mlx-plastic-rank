@@ -50,7 +50,9 @@ def pick_rank(A_np, target_energy: float, strategy: str, eps: float) -> int:
 
 
 def _numpy_svd_truncate(A_np: np.ndarray, r: int) -> np.ndarray:
-    U, S, Vh = np.linalg.svd(A_np, full_matrices=False)
+    # NumPy linalg does not reliably support float16 SVD across builds.
+    A_f32 = np.asarray(A_np, dtype=np.float32)
+    U, S, Vh = np.linalg.svd(A_f32, full_matrices=False)
     U_r = U[:, :r]
     S_r = S[:r]
     Vh_r = Vh[:r, :]

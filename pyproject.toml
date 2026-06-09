@@ -28,6 +28,8 @@ compress = [
 ]
 packs = [
     "mlx-lm",
+    "mlx-vlm",
+    "mlx-audio",
 ]
 
 [tool.pytest.ini_options]
@@ -37,8 +39,8 @@ addopts = "-q"
 [project.scripts]
 packs = "mlx_plastic_rank.packs.cli:main"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest",
     "ruff",
     "mypy",

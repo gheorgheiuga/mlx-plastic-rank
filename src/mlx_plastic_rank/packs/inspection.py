@@ -11,7 +11,9 @@ import numpy as np
 from .io import PackMetadata, load_pack, load_pack_metadata
 
 MAX_PACK_BYTES = 10 * 1024 * 1024
+MAX_HEAVY_PACK_BYTES = 512 * 1024 * 1024
 ALLOWED_RANKS = (2, 4, 8)
+HEAVY_ALLOWED_RANKS = (2, 4, 8, 16, 32, 64)
 
 _BASE_NAME_NORMALISATION = {
     "qwen3-4b-thinking-2507-mlx-4bit": "qwen3-4b-2507-mlx-4bit",
@@ -43,6 +45,10 @@ def canonical_base_name(base_model: str | None) -> str | None:
 
 
 def size_limit_for(metadata: PackMetadata) -> int:
+    profile = (metadata.profile or "lite").lower()
+    if profile == "heavy":
+        return MAX_HEAVY_PACK_BYTES
+
     base_name = canonical_base_name(metadata.base_model)
     ranks = {int(v) for v in metadata.rank_map.values() if v is not None}
     if base_name and ranks:
@@ -51,6 +57,15 @@ def size_limit_for(metadata: PackMetadata) -> int:
         if limit is not None:
             return limit
     return MAX_PACK_BYTES
+
+
+def allowed_ranks_for(profile: str | None) -> tuple[int, ...]:
+    value = (profile or "lite").lower()
+    if value == "heavy":
+        return HEAVY_ALLOWED_RANKS
+    if value == "lite":
+        return ALLOWED_RANKS
+    raise ValueError(f"Unsupported pack profile '{profile}'")
 
 
 def summarize_pack(pack_dir: Path) -> tuple[PackMetadata, List[TensorInfo], int, int, List[str]]:

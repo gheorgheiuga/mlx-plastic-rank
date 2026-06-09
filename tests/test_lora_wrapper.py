@@ -67,6 +67,38 @@ def test_zero_lora_no_effect():
     assert mx.allclose(wrapper(x), base(x))
 
 
+def test_active_rank_gate_limits_lora_delta():
+    base = nn.Linear(4, 12, bias=False)
+    base.weight = mx.ones_like(base.weight)
+    wrapper = LoRAFusedLinear(base, input_dim=4, output_dim=12)
+    A = mx.ones((4, 2), dtype=mx.float16)
+    B = mx.ones((2, 4), dtype=mx.float16)
+    adapter = SliceLoRA(
+        name="blocks.0.attn.q_proj",
+        start=0,
+        end=4,
+        rank=2,
+        alpha=2.0,
+        A=A,
+        B=B,
+        input_dim=4,
+        output_dim=4,
+    )
+    adapter.set_active_rank(1)
+    wrapper.add_adapter(adapter)
+
+    x = mx.ones((1, 4))
+    delta = wrapper(x) - base(x)
+
+    assert adapter.active_rank == 1
+    assert float(delta[0, 0]) == pytest.approx(4.0)
+    export_A, export_B, export_alpha, export_rank = adapter.export_arrays()
+    assert export_A.shape == (4, 1)
+    assert export_B.shape == (1, 4)
+    assert export_alpha == pytest.approx(1.0)
+    assert export_rank == 1
+
+
 def test_alpha_zero_no_effect():
     base = nn.Linear(4, 12, bias=False)
     wrapper = LoRAFusedLinear(base, input_dim=4, output_dim=12)
