@@ -20,5 +20,8 @@ Use Python 3.13 with 4-space indentation and UTF-8 files. Apply snake_case to fu
 ## Commit & Pull Request Guidelines
 Write imperative, scoped commit messages (e.g. `feat(rank): add prune threshold`, `fix(packs): guard alpha mismatch`). PRs should describe intent, link issues, and include before/after logs or CSV excerpts for demos. Verify `uv run python plastic_rank.py` and `uv run pytest -q` succeed prior to review. Keep changes focused; document trade-offs or research context in `codex/dsn/` and reference them from the PR.
 
+## Research & Decision Records
+Treat `codex/decisions.md` as the canonical decision index. When adding or changing a DSN in `codex/dsn/`, update `codex/dsn/dsn-log.md` and either add a matching entry in `codex/decisions.md` or keep the DSN status as `Proposed`/`Experimental`. Do not mark a DSN `Accepted` when it only proves scaffolding, mechanics, or a hypothesis; record the evidence status separately and name the validation or falsification test that would promote it. For Pop Rank/theorem work, distinguish implementation instrumentation from proof of quality benefit, and keep unresolved validation gaps visible in the decision record.
+
 ## Security & Configuration Tips
 Pin Python via `.python-version` (3.13) and prefer a local `.venv` for isolation. MLX targets Apple Silicon—follow upstream install guidance. Do not commit checkpoints, large datasets, or secrets; respect `.gitignore` and export artifacts via SafeTensors when needed.

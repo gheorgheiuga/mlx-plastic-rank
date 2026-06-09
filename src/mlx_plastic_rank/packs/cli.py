@@ -19,7 +19,7 @@ from .capabilities import capability_report, missing_capabilities
 from .dataset import build_supervised_token_dataset, build_token_dataset, load_jsonl_texts
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
 from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize_pack
-from .io import compute_sha256, save_pack, save_pack_metadata
+from .io import compute_sha256, load_pack_metadata, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
 from .rank_ledger import (
     compare_pack_rank_ledgers,
@@ -115,6 +115,36 @@ def _load_base_model(base_ref: str, loader: str = "auto"):
     load_model = _require_load_model()
     loaded = load_model(base_ref)
     return loaded[0], loaded[1]
+
+
+def _dequantize_linear_inplace(module: nn.Module) -> int:
+    """Convert quantized linears under module to fp16 linears."""
+
+    converted = 0
+    items = list(module.items()) if isinstance(module, nn.Module) else []
+    for key, child in items:
+        if isinstance(child, QuantizedLinear):
+            bits = int(getattr(child, "bits", 4))
+            factor = 32 // bits if bits else 1
+            out_dim = int(child.weight.shape[0])
+            in_dim = int(child.weight.shape[1]) * factor
+            weight = mx.dequantize(
+                child.weight,
+                child.scales,
+                child.get("biases"),
+                group_size=child.group_size,
+                bits=bits,
+                mode=child.mode,
+            )
+            linear = nn.Linear(in_dim, out_dim, bias="bias" in child)
+            linear.weight = weight.astype(mx.float16)
+            if "bias" in child:
+                linear.bias = child["bias"].astype(mx.float16)
+            module[key] = linear
+            converted += 1
+        elif isinstance(child, nn.Module):
+            converted += _dequantize_linear_inplace(child)
+    return converted
 
 
 def _resolve_base_checkpoint(base_ref: str) -> Path | None:
@@ -249,12 +279,33 @@ def _default_pack_dir(name: str) -> Path:
     return PACK_ROOT / name
 
 
+def _resolve_pack_dir(reference: str) -> Path:
+    candidate = Path(reference).expanduser()
+    if candidate.exists():
+        return candidate
+    return _default_pack_dir(reference)
+
+
 def cmd_create(args: argparse.Namespace) -> None:
     base_ref = str(args.base)
     base_checkpoint = _resolve_base_checkpoint(base_ref)
     pack_dir = _default_pack_dir(args.name)
     if pack_dir.exists() and not args.force:
         raise SystemExit(f"Pack '{args.name}' already exists. Use --force to overwrite.")
+    if args.resume_pack and args.dynamic_rank:
+        raise SystemExit("--resume-pack is a frozen-rank continuation path; omit --dynamic-rank.")
+    if args.resume_pack and args.rank is not None:
+        raise SystemExit("--resume-pack uses the existing per-adapter ranks; omit --rank.")
+    if args.resume_pack and args.zero_init:
+        raise SystemExit("--resume-pack continues existing weights; omit --zero-init.")
+    if args.resume_pack and args.rank_map_from_pack:
+        raise SystemExit("--resume-pack and --rank-map-from-pack are mutually exclusive.")
+    if args.rank_map_from_pack and args.dynamic_rank:
+        raise SystemExit("--rank-map-from-pack is a fixed-rank ablation path; omit --dynamic-rank.")
+    if args.rank_map_from_pack and args.rank is not None:
+        raise SystemExit("--rank-map-from-pack uses source metadata ranks; omit --rank.")
+    if args.rank_map_from_pack and args.min_rank > 0:
+        raise SystemExit("--rank-map-from-pack uses source metadata ranks; omit --min-rank.")
 
     print(f"Loading base model from {base_ref}...")
     model, tokenizer = _load_base_model(base_ref, args.loader)
@@ -279,68 +330,92 @@ def cmd_create(args: argparse.Namespace) -> None:
     except ValueError as exc:
         raise SystemExit(str(exc))
 
-    rank_map: Dict[str, int] = {}
-    alpha_map: Dict[str, float] = {}
-
-    def _snap_to_allowed(candidate: int) -> int:
-        for allowed in sorted(allowed_ranks):
-            if allowed >= int(candidate):
-                return allowed
-        return sorted(allowed_ranks)[-1]
-
-    if args.rank is not None:
-        if args.rank not in allowed_ranks:
-            raise SystemExit(
-                f"Rank {args.rank} is not allowed for profile={args.profile}; "
-                f"allowed ranks are {list(allowed_ranks)}"
-            )
-        print(f"Using explicit ranks (profile={args.profile}):")
-        for target in canonical_layers:
-            rank_map[target] = args.rank
-            alpha_map[target] = 2.0 * args.rank
-            print(f"  {target}: rank={rank_map[target]}")
-    else:
-        auto_rank_map, _, residuals = manager.compute_auto_ranks(
-            canonical_layers,
-            strategy=args.rank_strategy,
-            target_compression=args.target_compression,
-            eps=args.rank_eps,
-            allowed_ranks=allowed_ranks,
-        )
-        print(f"Auto-selected ranks ({args.rank_strategy}, profile={args.profile}):")
-        for target in canonical_layers:
-            selected_rank = auto_rank_map[target]
-            if args.min_rank > 0:
-                selected_rank = _snap_to_allowed(max(selected_rank, args.min_rank))
-            rank_map[target] = selected_rank
-            alpha_map[target] = 2.0 * selected_rank
-            res = residuals[target]
-            print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
-
-    base_rank = rank_map.get("attn.q_proj", next(iter(rank_map.values())))
-    base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
-
-    print(f"Initialising adapters on layers: {canonical_layers}")
-    if args.dynamic_rank:
+    if args.resume_pack:
+        resume_dir = _resolve_pack_dir(args.resume_pack)
+        if not resume_dir.exists():
+            raise SystemExit(f"Resume pack '{args.resume_pack}' not found at {resume_dir}")
+        metadata = manager.apply_pack(resume_dir)
         print(
-            "Dynamic rank enabled: "
-            f"max ranks={rank_map} initial_active_rank={args.dynamic_initial_rank}"
+            "Resuming frozen-rank pack "
+            f"{metadata.pack_name}: adapters={len(metadata.rank_map)} "
+            f"declared_rank={sum(metadata.rank_map.values())}"
         )
-    adapters = manager.initialize_adapters(
-        canonical_layers,
-        rank=base_rank,
-        alpha=base_alpha,
-        seed=args.seed,
-        rank_map=rank_map,
-        alpha_map=alpha_map,
-        dropout=args.lora_dropout,
-        allowed_ranks=allowed_ranks,
-        initial_active_rank=args.dynamic_initial_rank if args.dynamic_rank else None,
-    )
-    if args.zero_init:
-        for adapter in adapters.values():
-            adapter.A = mx.zeros_like(adapter.A)
-            adapter.B = mx.zeros_like(adapter.B)
+    else:
+        rank_map: Dict[str, int] = {}
+        alpha_map: Dict[str, float] = {}
+
+        def _snap_to_allowed(candidate: int) -> int:
+            for allowed in sorted(allowed_ranks):
+                if allowed >= int(candidate):
+                    return allowed
+            return sorted(allowed_ranks)[-1]
+
+        if args.rank_map_from_pack:
+            source_dir = _resolve_pack_dir(args.rank_map_from_pack)
+            if not source_dir.exists():
+                raise SystemExit(f"Rank-map source pack '{args.rank_map_from_pack}' not found at {source_dir}")
+            source_metadata = load_pack_metadata(source_dir / "meta.json")
+            rank_map = dict(source_metadata.rank_map)
+            alpha_map = dict(source_metadata.alpha_map)
+            if not rank_map:
+                raise SystemExit(f"Rank-map source pack '{args.rank_map_from_pack}' has no rank_map metadata.")
+            print(
+                "Using fresh adapters from rank map "
+                f"{source_metadata.pack_name}: adapters={len(rank_map)} declared_rank={sum(rank_map.values())}"
+            )
+        elif args.rank is not None:
+            if args.rank not in allowed_ranks:
+                raise SystemExit(
+                    f"Rank {args.rank} is not allowed for profile={args.profile}; "
+                    f"allowed ranks are {list(allowed_ranks)}"
+                )
+            print(f"Using explicit ranks (profile={args.profile}):")
+            for target in canonical_layers:
+                rank_map[target] = args.rank
+                alpha_map[target] = 2.0 * args.rank
+                print(f"  {target}: rank={rank_map[target]}")
+        else:
+            auto_rank_map, _, residuals = manager.compute_auto_ranks(
+                canonical_layers,
+                strategy=args.rank_strategy,
+                target_compression=args.target_compression,
+                eps=args.rank_eps,
+                allowed_ranks=allowed_ranks,
+            )
+            print(f"Auto-selected ranks ({args.rank_strategy}, profile={args.profile}):")
+            for target in canonical_layers:
+                selected_rank = auto_rank_map[target]
+                if args.min_rank > 0:
+                    selected_rank = _snap_to_allowed(max(selected_rank, args.min_rank))
+                rank_map[target] = selected_rank
+                alpha_map[target] = 2.0 * selected_rank
+                res = residuals[target]
+                print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
+
+        base_rank = rank_map.get("attn.q_proj", next(iter(rank_map.values())))
+        base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
+
+        print(f"Initialising adapters on layers: {canonical_layers}")
+        if args.dynamic_rank:
+            print(
+                "Dynamic rank enabled: "
+                f"max ranks={rank_map} initial_active_rank={args.dynamic_initial_rank}"
+            )
+        adapters = manager.initialize_adapters(
+            canonical_layers,
+            rank=base_rank,
+            alpha=base_alpha,
+            seed=args.seed,
+            rank_map=rank_map,
+            alpha_map=alpha_map,
+            dropout=args.lora_dropout,
+            allowed_ranks=allowed_ranks,
+            initial_active_rank=args.dynamic_initial_rank if args.dynamic_rank else None,
+        )
+        if args.zero_init:
+            for adapter in adapters.values():
+                adapter.A = mx.zeros_like(adapter.A)
+                adapter.B = mx.zeros_like(adapter.B)
 
     config = TrainingConfig(
         steps=args.steps,
@@ -1029,6 +1104,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use one explicit rank for every selected target instead of automatic rank selection.",
     )
     create.add_argument(
+        "--resume-pack",
+        help="Continue training an existing pack as a fixed heterogeneous rank map.",
+    )
+    create.add_argument(
+        "--rank-map-from-pack",
+        help="Initialise fresh adapters using the heterogeneous rank map from an existing pack.",
+    )
+    create.add_argument(
         "--min-rank",
         type=_parse_min_rank,
         default=0,
@@ -1271,31 +1354,3 @@ def main(argv: List[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-def _dequantize_linear_inplace(module: nn.Module) -> int:
-    """Convert quantized linears under module to fp16 linears."""
-
-    converted = 0
-    items = list(module.items()) if isinstance(module, nn.Module) else []
-    for key, child in items:
-        if isinstance(child, QuantizedLinear):
-            bits = int(getattr(child, "bits", 4))
-            factor = 32 // bits if bits else 1
-            out_dim = int(child.weight.shape[0])
-            in_dim = int(child.weight.shape[1]) * factor
-            weight = mx.dequantize(
-                child.weight,
-                child.scales,
-                child.get("biases"),
-                group_size=child.group_size,
-                bits=bits,
-                mode=child.mode,
-            )
-            linear = nn.Linear(in_dim, out_dim, bias="bias" in child)
-            linear.weight = weight.astype(mx.float16)
-            if "bias" in child:
-                linear.bias = child["bias"].astype(mx.float16)
-            module[key] = linear
-            converted += 1
-        elif isinstance(child, nn.Module):
-            converted += _dequantize_linear_inplace(child)
-    return converted

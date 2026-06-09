@@ -4,6 +4,7 @@
 **Title:** Implement dynamic Pop Rank with gated active ranks  
 **Date:** 2026-06-09  
 **Status:** Accepted  
+**Evidence Status:** Mechanics verified; quality benefit experimental
 **Related Research Inbox Entry:** Pop theorem / dynamic rank allocation
 
 ---
@@ -27,6 +28,7 @@
 ## Decision
 - Chosen option: Train max-rank tensors with hard active-rank gates.
 - Rationale: It is the smallest reliable implementation that lets each adapter earn rank during training while keeping MLX training stable.
+- Canonical decision record: `codex/decisions.md` ADR-0006.
 
 ## Implementation
 - `SliceLoRA` now supports optional rank gates and exports only active columns.
@@ -38,6 +40,7 @@
 - Immediate impacts: `--rank` can now mean maximum rank during training instead of final exported rank.
 - Risks/unknowns: The current grow/shrink signal is adapter-level utility from learned factor norms, not a validation-loss oracle. Real quality-per-MB benefit still needs Gemma fault-code bakeoff.
 - Mitigations: Keep fixed-rank baselines, use the rank ledger after training, and compare eval/generation metrics before claiming dynamic Pop Rank wins.
+- Validation gate: Promote dynamic Pop Rank claims only when gated runs beat fixed-rank baselines on held-out quality metrics at equal or lower exported adapter size.
 
 ## Follow-ups
 - [x] Add gated active-rank LoRA support.

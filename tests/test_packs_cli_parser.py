@@ -91,6 +91,42 @@ def test_create_parser_accepts_answer_loss_mode():
     assert args.loss_mode == "answer"
 
 
+def test_create_parser_accepts_resume_pack():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "create",
+            "--name",
+            "phase-two",
+            "--base",
+            "mlx-community/gemma-4-12B-it-qat-mxfp8",
+            "--data",
+            "data/fault_codes_train.jsonl",
+            "--resume-pack",
+            "phase-one",
+        ]
+    )
+    assert args.resume_pack == "phase-one"
+
+
+def test_create_parser_accepts_rank_map_from_pack():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "create",
+            "--name",
+            "hetero-scratch",
+            "--base",
+            "mlx-community/gemma-4-12B-it-qat-mxfp8",
+            "--data",
+            "data/fault_codes_train.jsonl",
+            "--rank-map-from-pack",
+            "phase-one",
+        ]
+    )
+    assert args.rank_map_from_pack == "phase-one"
+
+
 def test_eval_parser_accepts_chat_template():
     parser = build_parser()
     args = parser.parse_args(

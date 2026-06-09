@@ -67,6 +67,48 @@ def test_apply_pack_rejects_rank_mismatch(tmp_path):
         manager.apply_pack(pack_dir)
 
 
+def test_applied_pack_adapters_remain_trainable_and_reexportable(tmp_path):
+    pack_dir, _ = _write_pack(tmp_path)
+    manager = LoRAManager(FusedModel(hidden=8))
+
+    source_metadata = manager.apply_pack(pack_dir)
+    params = manager.trainable_parameters()
+
+    assert len(params) == 2
+    tensors, metadata = manager.export_active_pack("phase-two", tmp_path, profile=source_metadata.profile)
+    assert metadata.rank_map == source_metadata.rank_map
+    assert metadata.alpha_map == source_metadata.alpha_map
+    assert tensors["blocks.0.attn.q_proj.lora.A"].shape == (8, 4)
+    assert tensors["blocks.0.attn.q_proj.lora.B"].shape == (4, 8)
+
+
+def test_initialize_adapters_accepts_per_adapter_rank_map(tmp_path):
+    manager = LoRAManager(FusedModel(layers=2, hidden=8))
+
+    manager.initialize_adapters(
+        ["attn.q_proj"],
+        rank=4,
+        alpha=8.0,
+        seed=0,
+        rank_map={
+            "blocks.0.attn.q_proj": 2,
+            "blocks.1.attn.q_proj": 4,
+        },
+        alpha_map={
+            "blocks.0.attn.q_proj": 4.0,
+            "blocks.1.attn.q_proj": 8.0,
+        },
+    )
+    tensors, metadata = manager.export_active_pack("hetero", tmp_path)
+
+    assert metadata.rank_map == {
+        "blocks.0.attn.q_proj": 2,
+        "blocks.1.attn.q_proj": 4,
+    }
+    assert tensors["blocks.0.attn.q_proj.lora.A"].shape == (8, 2)
+    assert tensors["blocks.1.attn.q_proj.lora.A"].shape == (8, 4)
+
+
 def test_manager_set_dropout_rejects_invalid_values():
     manager = LoRAManager(FusedModel(hidden=8))
     with pytest.raises(PackApplicationError):

@@ -584,17 +584,12 @@ class LoRAManager:
 
         resolved_ranks: Dict[str, int] = {}
         resolved_alphas: Dict[str, float] = {}
-        for target in targets:
-            spec = self._target_specs[target]
-            local_rank = rank_map.get(target)
-            if local_rank is None:
-                local_rank = _default_rank_for_target(spec, rank)
+
+        def _validate_rank_alpha(key: str, local_rank: int, local_alpha: float) -> None:
             if local_rank not in allowed:
                 raise PackApplicationError(
-                    f"Unsupported LoRA rank {local_rank} for target {target}; allowed ranks {list(allowed)}"
+                    f"Unsupported LoRA rank {local_rank} for target {key}; allowed ranks {list(allowed)}"
                 )
-            default_alpha = alpha if (spec.kind in {"q", "o"} and target not in alpha_map) else 2.0 * local_rank
-            local_alpha = alpha_map.get(target, default_alpha)
             expected_alpha = 2.0 * local_rank
             if local_alpha != 0.0 and not math.isclose(
                 local_alpha,
@@ -603,8 +598,17 @@ class LoRAManager:
                 abs_tol=1e-6,
             ):
                 raise PackApplicationError(
-                    f"LoRA alpha must equal 2*rank ({expected_alpha}) for {target}; received {local_alpha}"
+                    f"LoRA alpha must equal 2*rank ({expected_alpha}) for {key}; received {local_alpha}"
                 )
+
+        for target in targets:
+            spec = self._target_specs[target]
+            local_rank = rank_map.get(target)
+            if local_rank is None:
+                local_rank = _default_rank_for_target(spec, rank)
+            default_alpha = alpha if (spec.kind in {"q", "o"} and target not in alpha_map) else 2.0 * local_rank
+            local_alpha = alpha_map.get(target, default_alpha)
+            _validate_rank_alpha(target, local_rank, local_alpha)
             resolved_ranks[target] = local_rank
             resolved_alphas[target] = float(local_alpha)
             rank_map[target] = local_rank
@@ -621,8 +625,10 @@ class LoRAManager:
                     continue
                 wrapper = attr_wrappers[spec.wrapper_attr]
                 start, end, input_dim, output_dim = _local_adapter_geometry(spec, wrapper)
-                local_rank = resolved_ranks[target]
-                local_alpha = resolved_alphas[target]
+                adapter_key = self._adapter_key(idx, target)
+                local_rank = rank_map.get(adapter_key, resolved_ranks[target])
+                local_alpha = alpha_map.get(adapter_key, 2.0 * local_rank)
+                _validate_rank_alpha(adapter_key, local_rank, local_alpha)
                 if local_rank <= 0:
                     continue
                 A = mx.zeros((output_dim, local_rank), dtype=mx.float16)
@@ -631,7 +637,7 @@ class LoRAManager:
                 )
                 B = B.astype(mx.float16)
                 adapter = SliceLoRA(
-                    name=self._adapter_key(idx, target),
+                    name=adapter_key,
                     start=start,
                     end=end,
                     rank=local_rank,

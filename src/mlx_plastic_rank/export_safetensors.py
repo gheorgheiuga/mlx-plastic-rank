@@ -47,7 +47,7 @@ def export_safetensors(path: str, weights: Dict[str, mx.array]) -> None:
 def print_gguf_instructions():  # pragma: no cover - guidance text
     print(
         "Convert to GGUF with llama.cpp/convert_hf_to_gguf.py and pass flags\n"
-        "to include tokenizer and chat template metadata as per the Grok report."
+        "to include tokenizer and chat template metadata."
     )
 
 

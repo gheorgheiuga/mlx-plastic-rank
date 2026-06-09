@@ -4,6 +4,7 @@
 **Title:** <short description, e.g. "Stick with Python 3.13 as default">  
 **Date:** <YYYY-MM-DD>  
 **Status:** Proposed | Accepted | Rejected | Superseded  
+**Evidence Status:** Hypothesis | Mechanics verified | Quality verified | Production validated
 **Related Research Inbox Entry:** <optional link or note>
 
 ---
@@ -25,11 +26,13 @@
 ## Decision
 - Chosen option: <A/B/C>  
 - Rationale (2–3 sentences explaining the trade-off).  
+- Canonical decision record: <link to `codex/decisions.md` entry, or explain why this remains Proposed/Experimental>.
 
 ## Consequences
 - Immediate impacts on code, docs, or processes.  
 - Risks or unknowns that remain.  
 - Mitigations (tests, rollback plan, metrics to watch).  
+- Validation or falsification test required before stronger claims are made.
 
 ## Follow-ups
 - [ ] Next check-in (date, metric threshold, or release milestone).  
@@ -38,4 +41,4 @@
 
 ---
 
-Document outcomes in the runbook once implemented.
+Document outcomes in the runbook once implemented. Accepted DSNs must also be reflected in `codex/decisions.md`; otherwise keep the DSN status Proposed or explicitly experimental.

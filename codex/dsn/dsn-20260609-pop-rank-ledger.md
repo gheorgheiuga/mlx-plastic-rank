@@ -4,6 +4,7 @@
 **Title:** Measure pack rank algebra before claiming theorem advantage  
 **Date:** 2026-06-09  
 **Status:** Accepted  
+**Evidence Status:** Instrumentation verified; theorem and quality validation open
 **Related Research Inbox Entry:** Pop theorem / rank-polynomial intuition
 
 ---
@@ -27,11 +28,13 @@
 ## Decision
 - Chosen option: Add the rank ledger first.
 - Rationale: It turns the theorem intuition into measurable pack accounting before we run expensive rank-selection bakeoffs or claim theorem advantage.
+- Canonical decision record: `codex/decisions.md` ADR-0005.
 
 ## Consequences
 - Immediate impacts: `packs rank-ledger` can inspect one pack or compare two packs from their SafeTensors factors.
 - Risks/unknowns: The ledger measures low-rank LoRA operators, not matrix polynomials of the base model. It should be described as rank-algebra instrumentation, not as a direct theorem proof.
 - Mitigations: Keep result language precise, then run fixed-rank vs stable-rank vs theorem-rank bakeoffs using the same ledger, eval, and generation metrics.
+- Validation gate: Promote Pop Rank claims only if ledger metrics predict or explain held-out quality-per-MB improvements.
 
 ## First Readout
 - `fault-codes-gemma4-it-answer-r32-300` has 136 adapters, declared rank 4352, effective rank 4352, zero rank slack, and about 13,041 bytes per effective rank.

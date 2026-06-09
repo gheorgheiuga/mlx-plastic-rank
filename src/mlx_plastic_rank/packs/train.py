@@ -77,6 +77,7 @@ def train_lora(
         loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
         param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
         manager.set_trainable_parameters(param_arrays)
+        mx.eval(loss, *param_arrays)
         _maybe_adjust_dynamic_ranks(manager, config, step)
         if step % config.log_interval == 0 or step == config.steps:
             elapsed = time.time() - start
@@ -116,6 +117,7 @@ def train_lora_supervised(
         loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
         param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
         manager.set_trainable_parameters(param_arrays)
+        mx.eval(loss, *param_arrays)
         _maybe_adjust_dynamic_ranks(manager, config, step)
         if step % config.log_interval == 0 or step == config.steps:
             elapsed = time.time() - start
