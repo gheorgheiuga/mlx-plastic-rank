@@ -31,16 +31,63 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 6. Execute the plasticity demo: `uv run python plastic_rank.py --steps 10`
 
 ## LoRA Skill Packs
-- Train a pack: `uv run packs create --name domain-demo --base qwen3-4b-2507-mlx-4bit --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`
+- Default Gemma 4 base: `mlx-community/gemma-4-12B-mxfp8`. It keeps the unified any-to-any MLX architecture while roughly halving the local footprint versus bf16. Use `mlx-community/gemma-4-12B-bf16` as a reference/high-fidelity checkpoint for rank probes or regression comparisons when memory allows.
+- Train a pack: `uv run packs create --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --layers attn.q_proj,attn.k_proj,attn.v_proj --loader auto --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`
   
-  Qwen3 4-bit checkpoints stay quantized end-to-end; per-slice ranks adjust automatically (`q` uses the requested rank, `k/v` default to the grouped head width). Add `--train-fp16-fallback` if a projection fails geometry checks.
+  Gemma 4 unified checkpoints load through `mlx-vlm` in `--loader auto`; Qwen/Llama text-only checkpoints continue through `mlx-lm`. Per-slice ranks adjust automatically (`q` keeps the requested rank, `k/v` default to the grouped key/value head width). `attn.o_proj` is supported when you want a higher-capacity pack, but budget it explicitly against the size cap. Add `--train-fp16-fallback` if a quantized projection fails geometry checks.
+- Check local macOS modality support: `uv run --extra packs packs capabilities --check`. The pack extra includes `mlx-lm`, `mlx-vlm`, and `mlx-audio`; `mlx-vlm` covers Gemma 4 unified image/audio/video prompting, while `mlx-audio` is the dedicated speech IO layer for TTS, STT, and STS workflows around packs.
 - Inspect metadata: `uv run packs inspect --name domain-demo`
-- Apply safely: `uv run packs apply --name domain-demo --base qwen3-4b-2507-mlx-4bit --dry-run`
-- Evaluate: `uv run packs eval --base qwen3-4b-2507-mlx-4bit --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
+- Apply safely: `uv run packs apply --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
+- Evaluate: `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
+- For prompt/answer JSONL, add `--loss-mode answer` to train/evaluate only assistant answer tokens. This is the preferred mode for diagnostic or maintenance packs where the prompt is context, not a target to imitate.
 - Batch evaluation with VRAM/latency guardrails lives in `scripts/demo_plasticity_blocks.py`.
-- Compare base vs pack across domains: `uv run packs eval-batch --base qwen3-4b-2507-mlx-4bit --pack domain-demo --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip` (outputs PPL, TPS, first-token ms, VRAM, pack size).
+- Compare base vs pack across domains: `uv run packs eval-batch --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip` (outputs PPL, TPS, first-token ms, VRAM, pack size).
+- Gemma 4 bake-off metadata: `uv run --extra packs python scripts/gemma4_smoke.py --metadata-only --out out/gemma4_smoke.json`. Real mxfp8 generation/no-op pack smoke: `uv run --extra packs python scripts/gemma4_smoke.py --models mlx-community/gemma-4-12B-mxfp8 --max-tokens 32 --noop-pack`.
+- Instruction-tuned UX smoke: `uv run --extra packs python scripts/gemma4_smoke.py --models mlx-community/gemma-4-12B-it-qat-mxfp8 --chat-template --max-tokens 32`.
 - Heavy packs (bigger ranks + larger size cap): add `--profile heavy` to `packs create` when you want higher-capacity domain packs loaded on demand from SSD.
-- To force heavier adapters even when auto-rank would stay small, add `--min-rank 16` (or higher; values snap to allowed heavy ranks).
+- To force heavier adapters even when auto-rank would stay small, add `--min-rank 16` (or higher; values snap to allowed heavy ranks). To bypass auto-rank entirely for controlled sweeps, use `--rank N`.
+
+### IndustryBench Pilot
+Use Alibaba's IndustryBench as a small industrial QA pack probe. The extractor keeps source metadata in JSON fields while letting the training text stay clean.
+- Extract a small English split: `uv run python scripts/industrybench_extract.py --language en --source-limit 512 --train-size 128 --eval-size 32 --metadata-mode none --train-out data/industrybench_en_train.jsonl --eval-out data/industrybench_en_eval.jsonl`
+- Baseline IT QAT eval: `uv run --extra packs packs eval --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --data-path data/industrybench_en_eval.jsonl --chat-template --sequence-length 256 --num-samples 32 --batch-size 1 --out out/industrybench_gemma4_it_baseline.json --csv out/industrybench_gemma4_it_baseline.csv`
+- No-shrink heavy pilot pack: `uv run --extra packs packs create --name industrybench-en-gemma4-it-heavy-smoke --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/industrybench_en_train.jsonl --chat-template --steps 20 --batch-size 1 --sequence-length 256 --learning-rate 1e-5 --target-compression 0.7 --profile heavy`
+- First result: the pack exported and applied successfully, with q/v rank 64, k rank 32, and size 91.75 MB. On the 32-row held-out split it changed logits (`max_logit_diff=3.0`) but worsened PPL by 1.45%, so this is an end-to-end mechanics proof, not a quality win.
+
+### Industrial Fault-Code Pilot
+Use `avneetsingla/industrial-fault-codes-sample` for the first practical industrial maintenance pack. It has 3,000 English fault-code rows with `brand`, `code`, `description`, and `solution` fields. License is `cc-by-nc-4.0`, so treat this as research/prototyping data unless licensing is resolved.
+- Extract train/eval JSONL: `uv run python scripts/fault_codes_extract.py --train-size 2400 --eval-size 300 --train-out data/fault_codes_train.jsonl --eval-out data/fault_codes_eval.jsonl`
+- Baseline answer-only eval: `uv run --extra packs packs eval --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --data-path data/fault_codes_eval.jsonl --chat-template --loss-mode answer --sequence-length 256 --num-samples 300 --batch-size 4 --out out/fault_codes_gemma4_it_answer_baseline_300.json --csv out/fault_codes_gemma4_it_answer_baseline_300.csv`
+- Rank-16 pilot pack: `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-r16-100 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 100 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 16 --profile heavy --lora-dropout 0.05`
+- Best sweep pack: `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-r32-300 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 300 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 32 --profile heavy --lora-dropout 0.05`
+- Pack eval: `uv run --extra packs packs eval --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --pack fault-codes-gemma4-it-answer-r32-300 --data-path data/fault_codes_eval.jsonl --chat-template --loss-mode answer --sequence-length 256 --num-samples 300 --batch-size 4 --out out/fault_codes_gemma4_it_answer_r32_300_eval_300.json --csv out/fault_codes_gemma4_it_answer_r32_300_eval_300.csv`
+- Generation check: `uv run --extra packs python scripts/fault_codes_generate_check.py --base mlx-community/gemma-4-12B-it-qat-mxfp8 --pack fault-codes-gemma4-it-answer-r32-300 --eval-data data/fault_codes_eval.jsonl --limit 8 --max-tokens 96 --temperature 0 --chat-template --out out/fault_codes_generation_r32_300_8.json --csv out/fault_codes_generation_r32_300_8.csv`
+- Full 300-row sweep:
+
+| Pack | Size | Answer PPL | Delta | Token Acc. | Generation solution-overlap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| base | 0 MB | 15.4316 | 0.00% | 0.6155 | 0.2723 |
+| r16 / 100 steps | 27.10 MB | 14.4647 | -6.27% | 0.6197 | not run |
+| r16 / 300 steps | 27.10 MB | 11.6834 | -24.29% | 0.6311 | 0.2584 |
+| r32 / 100 steps | 54.16 MB | 12.8972 | -16.42% | 0.6259 | not run |
+| r32 / 300 steps | 54.16 MB | 8.5175 | -44.80% | 0.6513 | 0.3619 |
+
+Best current result: `fault-codes-gemma4-it-answer-r32-300`. Rank 16 / 300 is the best smaller pack by PPL-per-MB, but rank 32 / 300 is the first pack that improves both full-token eval and generated solution-keyword overlap.
+
+### Pop-Theorem Rank Ledger
+Use the rank ledger to measure the algebraic footprint of a pack before claiming that rank selection improved. It reconstructs each LoRA update in compressed form and reports effective rank, slack, stable rank, per-target rank budget, and pairwise pack overlap/composition.
+- Inspect one pack: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_ledger_r32_300.json --csv out/fault_codes_rank_ledger_r32_300.csv`
+- Compare two packs: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r16-300 --compare fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_compare_r16_300_vs_r32_300.json --csv out/fault_codes_rank_compare_r16_300_vs_r32_300.csv`
+
+First ledger readout: `r32/300` has 136 adapters, declared rank 4352, effective rank 4352, and zero rank slack. Compared with `r16/300`, the shared adapters compose additively: left effective rank 2176, right effective rank 4352, composition rank 6528, rank savings 0, row/column overlap 0, mean absolute Frobenius cosine about 0.0097. The stronger pack is adding mostly new rank directions rather than duplicating the smaller pack.
+
+### Dynamic Pop Rank
+Use dynamic rank when you want the pack to start small and earn capacity during training. The requested `--rank` becomes the maximum rank; `--dynamic-initial-rank` sets the active rank prefix; train-time rank signals grow high-utility adapters and leave low-utility adapters small. Export writes only active rank columns, so the final pack can be smaller than its training ceiling.
+
+Example fault-code run:
+`uv run --extra packs packs create --name fault-codes-gemma4-it-answer-dynamic-r32-init4-300 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 300 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 32 --profile heavy --lora-dropout 0.05 --dynamic-rank --dynamic-initial-rank 4 --dynamic-rank-warmup 50 --dynamic-rank-interval 25 --dynamic-grow-threshold 0.25 --dynamic-prune-threshold 0.03`
+
+This mode is implemented and unit-tested; it still needs a real Gemma fault-code bakeoff against fixed `r16`/`r32` before claiming quality-per-MB wins.
 
 ### On-Demand Domain Routing (TTL + LRU)
 Run a core model and attach/detach packs on demand using domain labels:
@@ -62,8 +109,8 @@ Run a core model and attach/detach packs on demand using domain labels:
 
 ## Requirements & Notes
 - Apple Silicon with MLX installed is required for GPU-backed ops; SVD falls back to CPU streams.
-- `packs` commands require `mlx-lm` (install with `uv pip install -e '.[packs]'`).
-- Packs enforce `.lora.{A,B,alpha}` tensor schema, fp16 matrices, fp32 alpha, ≤10 MB total.
+- `packs` commands require `mlx-lm`; Gemma 4 any-to-any support also requires `mlx-vlm`, and speech IO support uses `mlx-audio` (all install with `uv pip install -e '.[packs]'`).
+- Packs enforce `.lora.{A,B,alpha}` tensor schema, fp16 matrices, and fp32 alpha. Lite packs default to a 10 MB cap; heavy packs allow larger SSD-loaded adapters.
 - RNG seeds are fixed in tests to keep MLX operations deterministic.
 
 ## License
