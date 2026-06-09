@@ -93,6 +93,85 @@ class QuantizedModel:
         self.model_type = "qwen3"
 
 
+class GemmaUnifiedAttention:
+    def __init__(
+        self,
+        hidden: int,
+        n_heads: int,
+        n_kv_heads: int,
+        head_dim: int,
+        *,
+        use_k_eq_v: bool = False,
+    ):
+        q_hidden = n_heads * head_dim
+        kv_hidden = n_kv_heads * head_dim
+        self.use_k_eq_v = use_k_eq_v
+        self.q_proj = nn.Linear(hidden, q_hidden, bias=False)
+        self.k_proj = nn.Linear(hidden, kv_hidden, bias=False)
+        if not use_k_eq_v:
+            self.v_proj = nn.Linear(hidden, kv_hidden, bias=False)
+        self.o_proj = nn.Linear(q_hidden, hidden, bias=False)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        return self.o_proj(self.q_proj(x))
+
+
+class GemmaUnifiedBlock:
+    def __init__(
+        self,
+        hidden: int,
+        n_heads: int,
+        n_kv_heads: int,
+        head_dim: int,
+        *,
+        use_k_eq_v: bool = False,
+    ):
+        self.self_attn = GemmaUnifiedAttention(
+            hidden,
+            n_heads,
+            n_kv_heads,
+            head_dim,
+            use_k_eq_v=use_k_eq_v,
+        )
+
+
+class GemmaUnifiedModel:
+    def __init__(
+        self,
+        layers: int = 2,
+        hidden: int = 16,
+        n_heads: int = 4,
+        n_kv_heads: int = 1,
+        head_dim: int = 4,
+        missing_v_layers: tuple[int, ...] = (),
+        global_kv_heads: int = 1,
+    ):
+        text_config = types.SimpleNamespace(
+            model_type="gemma4_text",
+            hidden_size=hidden,
+            num_hidden_layers=layers,
+            num_attention_heads=n_heads,
+            num_key_value_heads=n_kv_heads,
+            head_dim=head_dim,
+        )
+        self.config = types.SimpleNamespace(model_type="gemma4_unified", text_config=text_config)
+        self.language_model = types.SimpleNamespace(
+            model=types.SimpleNamespace(
+                layers=[
+                    GemmaUnifiedBlock(
+                        hidden,
+                        n_heads,
+                        global_kv_heads if index in missing_v_layers else n_kv_heads,
+                        head_dim,
+                        use_k_eq_v=index in missing_v_layers,
+                    )
+                    for index in range(layers)
+                ]
+            ),
+            config=text_config,
+        )
+
+
 def _eye_rank(dim: int, rank: int) -> mx.array:
     mat = mx.zeros((dim, dim), dtype=mx.float32)
     for i in range(min(rank, dim)):
@@ -145,6 +224,11 @@ def test_quantized_attention_alpha_zero_is_noop():
     _alpha_zero_noop(model, ["attn.q_proj", "attn.k_proj", "attn.v_proj"])
 
 
+def test_gemma_unified_attention_alpha_zero_is_noop():
+    model = GemmaUnifiedModel()
+    _alpha_zero_noop(model, ["attn.q_proj", "attn.k_proj", "attn.v_proj", "attn.o_proj"])
+
+
 def test_rejects_invalid_rank():
     model = FusedModel(hidden=8)
     manager = LoRAManager(model)
@@ -180,6 +264,75 @@ def test_quantized_geometry_defaults():
     specs = manager._target_specs
     assert specs["attn.q_proj"].output_dim == 256
     assert specs["attn.k_proj"].output_dim == 64
+
+
+def test_gemma_unified_discovers_language_tower_and_projection_geometry():
+    model = GemmaUnifiedModel()
+    manager = LoRAManager(model)
+
+    assert len(manager._blocks()) == 2
+    assert manager.model_type == "gemma4_unified"
+    assert manager.hidden_size == 16
+    specs = manager._target_specs
+    assert set(specs) == {"attn.q_proj", "attn.k_proj", "attn.v_proj", "attn.o_proj"}
+    assert specs["attn.q_proj"].wrapper_attr == "self_attn.q_proj"
+    assert specs["attn.q_proj"].input_dim == 16
+    assert specs["attn.q_proj"].output_dim == 16
+    assert specs["attn.k_proj"].output_dim == 4
+    assert specs["attn.v_proj"].output_dim == 4
+    assert specs["attn.o_proj"].input_dim == 16
+    assert specs["attn.o_proj"].output_dim == 16
+    assert specs["attn.k_proj"].kv_hidden == 4
+
+
+def test_gemma_unified_default_ranks_downrank_kv_and_keep_output_rank():
+    model = GemmaUnifiedModel()
+    manager = LoRAManager(model)
+    adapters = manager.initialize_adapters(
+        targets=["attn.q_proj", "attn.k_proj", "attn.v_proj", "attn.o_proj"],
+        rank=4,
+        alpha=8.0,
+        seed=0,
+    )
+
+    assert adapters["blocks.0.attn.q_proj"].rank == 4
+    assert adapters["blocks.0.attn.k_proj"].rank == 2
+    assert adapters["blocks.0.attn.v_proj"].rank == 2
+    assert adapters["blocks.0.attn.o_proj"].rank == 4
+    assert adapters["blocks.0.attn.q_proj"].B.shape == (4, 16)
+    assert adapters["blocks.0.attn.k_proj"].A.shape == (4, 2)
+    assert adapters["blocks.0.attn.o_proj"].A.shape == (16, 4)
+    assert adapters["blocks.0.attn.o_proj"].B.shape == (4, 16)
+
+
+def test_gemma_unified_skips_missing_v_projection_layers():
+    model = GemmaUnifiedModel(layers=2, missing_v_layers=(1,))
+    manager = LoRAManager(model)
+    adapters = manager.initialize_adapters(
+        targets=["attn.q_proj", "attn.k_proj", "attn.v_proj"],
+        rank=4,
+        alpha=8.0,
+        seed=0,
+    )
+
+    assert "blocks.0.attn.v_proj" in adapters
+    assert "blocks.1.attn.v_proj" not in adapters
+    assert "blocks.1.attn.q_proj" in adapters
+    assert "blocks.1.attn.k_proj" in adapters
+
+
+def test_gemma_unified_uses_block_local_projection_geometry():
+    model = GemmaUnifiedModel(layers=2, n_kv_heads=2, missing_v_layers=(1,), global_kv_heads=1)
+    manager = LoRAManager(model)
+    adapters = manager.initialize_adapters(
+        targets=["attn.k_proj"],
+        rank=4,
+        alpha=8.0,
+        seed=0,
+    )
+
+    assert adapters["blocks.0.attn.k_proj"].A.shape == (8, 2)
+    assert adapters["blocks.1.attn.k_proj"].A.shape == (4, 2)
 
 
 def test_compute_auto_ranks_with_theorem():

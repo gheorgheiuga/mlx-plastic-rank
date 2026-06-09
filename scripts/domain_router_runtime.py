@@ -64,7 +64,8 @@ def main() -> None:
     print(f"Loaded {len(domain_map)} domain entries from {args.domain_map}")
 
     print(f"Loading base model from {args.base}...")
-    model, tokenizer = load_model(str(args.base))
+    loaded = load_model(str(args.base))
+    model, tokenizer = loaded[0], loaded[1]
     manager = LoRAManager(model, base_checkpoint=None, base_model=str(args.base))
     router = DomainPackRouter(
         manager,

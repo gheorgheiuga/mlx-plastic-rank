@@ -65,7 +65,8 @@ def run_demo(
     seed: int,
 ) -> None:
     print(f"Loading model from {base_path}...")
-    model, tokenizer = load_model(str(base_path))
+    loaded = load_model(str(base_path))
+    model, tokenizer = loaded[0], loaded[1]
     manager = LoRAManager(model, base_checkpoint=base_path)
 
     print("\n=== Base model ===")

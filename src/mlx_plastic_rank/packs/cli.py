@@ -9,34 +9,52 @@ import math
 import os
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import mlx.core as mx
 import mlx.nn as nn
 from mlx.nn.layers.quantized import QuantizedLinear
 
-from .dataset import build_token_dataset, load_jsonl_texts
+from .capabilities import capability_report, missing_capabilities
+from .dataset import build_supervised_token_dataset, build_token_dataset, load_jsonl_texts
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
 from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize_pack
 from .io import compute_sha256, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
 from .router import DomainPackRouter, load_domain_map
-from .train import TrainingConfig, train_lora
+from .train import TrainingConfig, model_logits, train_lora, train_lora_supervised
 
 LORA_ALIAS_MAP = {
     "q": "attn.q_proj",
     "k": "attn.k_proj",
     "v": "attn.v_proj",
+    "o": "attn.o_proj",
 }
 
+_eval_ppl: Any
+_load_data: Any
+_load_model: Any
+_load_vlm_model: Any
+
 try:
-    from mlx_lm.perplexity import eval_ppl as _eval_ppl
-    from mlx_lm.perplexity import load_data as _load_data
-    from mlx_lm.utils import load as _load_model
+    from mlx_lm.perplexity import eval_ppl as _eval_ppl_import
+    from mlx_lm.perplexity import load_data as _load_data_import
+    from mlx_lm.utils import load as _load_model_import
+
+    _eval_ppl = _eval_ppl_import
+    _load_data = _load_data_import
+    _load_model = _load_model_import
 except ModuleNotFoundError:
     _eval_ppl = None
     _load_data = None
     _load_model = None
+
+try:
+    from mlx_vlm.utils import load as _load_vlm_model_import
+
+    _load_vlm_model = _load_vlm_model_import
+except ModuleNotFoundError:
+    _load_vlm_model = None
 
 
 def _resolve_target(name: str) -> str:
@@ -58,6 +76,39 @@ def _require_load_model():
             "The packs CLI requires `mlx-lm`. Install it with: uv pip install -e '.[packs]'"
         )
     return _load_model
+
+
+def _require_mlx_vlm():
+    if _load_vlm_model is None:
+        raise SystemExit(
+            "Gemma 4 any-to-any bases require `mlx-vlm`. Install it with: uv pip install -e '.[packs]'"
+        )
+    return _load_vlm_model
+
+
+def _looks_like_vlm_ref(base_ref: str) -> bool:
+    lowered = base_ref.lower()
+    if "optiq" in lowered:
+        return False
+    return "gemma-4" in lowered or "gemma4" in lowered
+
+
+def _tokenizer_from_processor(processor: Any):
+    tokenizer = getattr(processor, "tokenizer", processor)
+    if not hasattr(tokenizer, "encode"):
+        raise SystemExit("Loaded processor does not expose tokenizer.encode for text pack training/eval.")
+    return tokenizer
+
+
+def _load_base_model(base_ref: str, loader: str = "auto"):
+    if loader == "mlx-vlm" or (loader == "auto" and _looks_like_vlm_ref(base_ref)):
+        load_vlm = _require_mlx_vlm()
+        loaded = load_vlm(base_ref)
+        model, processor = loaded[0], loaded[1]
+        return model, _tokenizer_from_processor(processor)
+    load_model = _require_load_model()
+    loaded = load_model(base_ref)
+    return loaded[0], loaded[1]
 
 
 def _resolve_base_checkpoint(base_ref: str) -> Path | None:
@@ -87,6 +138,13 @@ def _parse_min_rank(raw: str) -> int:
     return value
 
 
+def _parse_rank(raw: str) -> int:
+    value = _parse_min_rank(raw)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("Rank must be > 0")
+    return value
+
+
 def _tokenise_prompt(tokenizer, prompt: str, max_tokens: int) -> mx.array:
     token_ids = tokenizer.encode(prompt)
     if not token_ids:
@@ -105,7 +163,7 @@ def _evaluate_perplexity(model, dataset: mx.array, batch_size: int) -> Dict[str,
     for start in range(0, dataset.shape[0], batch_size):
         batch = dataset[start : start + batch_size]
         step_start = time.time()
-        logits = model(batch[:, :-1]).astype(mx.float32)
+        logits = model_logits(model, batch[:, :-1]).astype(mx.float32)
         losses = nn.losses.cross_entropy(logits, batch[:, 1:], reduction="none")
         mx.eval(losses)
         if first_token_ms is None:
@@ -134,6 +192,50 @@ def _evaluate_perplexity(model, dataset: mx.array, batch_size: int) -> Dict[str,
         "tokens": int(tokens),
     }
 
+
+def _evaluate_supervised_perplexity(
+    model,
+    tokens: mx.array,
+    masks: mx.array,
+    batch_size: int,
+) -> Dict[str, float]:
+    if tokens.shape[0] == 0:
+        raise ValueError("Dataset is empty")
+    mx.reset_peak_memory()
+    all_losses: List[mx.array] = []
+    first_token_ms: float | None = None
+    start_time = time.time()
+    total_tokens = 0.0
+    for start in range(0, tokens.shape[0], batch_size):
+        batch = tokens[start : start + batch_size]
+        mask = masks[start : start + batch_size]
+        step_start = time.time()
+        logits = model_logits(model, batch[:, :-1]).astype(mx.float32)
+        target_mask = mask[:, 1:]
+        losses = nn.losses.cross_entropy(logits, batch[:, 1:], reduction="none")
+        masked_losses = losses * target_mask
+        mx.eval(masked_losses)
+        if first_token_ms is None:
+            first_token_ms = (time.time() - step_start) * 1000.0
+        all_losses.append(masked_losses.flatten())
+        total_tokens += float(mx.sum(target_mask).item())
+    total_time = time.time() - start_time
+    losses_concat = mx.concatenate(all_losses)
+    denom = max(total_tokens, 1.0)
+    mean_loss = float(mx.sum(losses_concat).item()) / denom
+    ppl = math.exp(mean_loss)
+    vram_peak = mx.get_peak_memory() / (1024**3)
+    tps = total_tokens / max(total_time, 1e-6)
+    return {
+        "ppl": float(ppl),
+        "ppl_se": 0.0,
+        "tps": float(tps),
+        "first_token_ms": float(first_token_ms or 0.0),
+        "vram_peak": float(vram_peak),
+        "eval_time_s": float(total_time),
+        "tokens": int(total_tokens),
+    }
+
 PACK_ROOT = Path("packs")
 
 
@@ -142,7 +244,6 @@ def _default_pack_dir(name: str) -> Path:
 
 
 def cmd_create(args: argparse.Namespace) -> None:
-    load_model, _, _ = _require_mlx_lm()
     base_ref = str(args.base)
     base_checkpoint = _resolve_base_checkpoint(base_ref)
     pack_dir = _default_pack_dir(args.name)
@@ -150,7 +251,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         raise SystemExit(f"Pack '{args.name}' already exists. Use --force to overwrite.")
 
     print(f"Loading base model from {base_ref}...")
-    model, tokenizer = load_model(base_ref)
+    model, tokenizer = _load_base_model(base_ref, args.loader)
     if getattr(args, "train_fp16_fallback", False):
         converted = _dequantize_linear_inplace(model)
         if converted:
@@ -162,24 +263,16 @@ def cmd_create(args: argparse.Namespace) -> None:
 
     layers = [layer.strip() for layer in args.layers.split(",") if layer.strip()]
     canonical_layers = [_resolve_target(layer) for layer in layers]
-    allowed_targets = {"attn.q_proj", "attn.k_proj", "attn.v_proj"}
+    allowed_targets = {"attn.q_proj", "attn.k_proj", "attn.v_proj", "attn.o_proj"}
     disallowed = [layer for layer in canonical_layers if layer not in allowed_targets]
     if disallowed:
-        raise SystemExit(f"Unsupported LoRA targets: {disallowed}. Only q,k,v projections are allowed.")
+        raise SystemExit(f"Unsupported LoRA targets: {disallowed}. Only q,k,v,o projections are allowed.")
 
     try:
         allowed_ranks = allowed_ranks_for(args.profile)
     except ValueError as exc:
         raise SystemExit(str(exc))
 
-    auto_rank_map, _, residuals = manager.compute_auto_ranks(
-        canonical_layers,
-        strategy=args.rank_strategy,
-        target_compression=args.target_compression,
-        eps=args.rank_eps,
-        allowed_ranks=allowed_ranks,
-    )
-    print(f"Auto-selected ranks ({args.rank_strategy}, profile={args.profile}):")
     rank_map: Dict[str, int] = {}
     alpha_map: Dict[str, float] = {}
 
@@ -189,14 +282,34 @@ def cmd_create(args: argparse.Namespace) -> None:
                 return allowed
         return sorted(allowed_ranks)[-1]
 
-    for target in canonical_layers:
-        selected_rank = auto_rank_map[target]
-        if args.min_rank > 0:
-            selected_rank = _snap_to_allowed(max(selected_rank, args.min_rank))
-        rank_map[target] = selected_rank
-        alpha_map[target] = 2.0 * selected_rank
-        res = residuals[target]
-        print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
+    if args.rank is not None:
+        if args.rank not in allowed_ranks:
+            raise SystemExit(
+                f"Rank {args.rank} is not allowed for profile={args.profile}; "
+                f"allowed ranks are {list(allowed_ranks)}"
+            )
+        print(f"Using explicit ranks (profile={args.profile}):")
+        for target in canonical_layers:
+            rank_map[target] = args.rank
+            alpha_map[target] = 2.0 * args.rank
+            print(f"  {target}: rank={rank_map[target]}")
+    else:
+        auto_rank_map, _, residuals = manager.compute_auto_ranks(
+            canonical_layers,
+            strategy=args.rank_strategy,
+            target_compression=args.target_compression,
+            eps=args.rank_eps,
+            allowed_ranks=allowed_ranks,
+        )
+        print(f"Auto-selected ranks ({args.rank_strategy}, profile={args.profile}):")
+        for target in canonical_layers:
+            selected_rank = auto_rank_map[target]
+            if args.min_rank > 0:
+                selected_rank = _snap_to_allowed(max(selected_rank, args.min_rank))
+            rank_map[target] = selected_rank
+            alpha_map[target] = 2.0 * selected_rank
+            res = residuals[target]
+            print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
 
     base_rank = rank_map.get("attn.q_proj", next(iter(rank_map.values())))
     base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
@@ -217,9 +330,6 @@ def cmd_create(args: argparse.Namespace) -> None:
             adapter.A = mx.zeros_like(adapter.A)
             adapter.B = mx.zeros_like(adapter.B)
 
-    texts = load_jsonl_texts(Path(args.data))
-    dataset = build_token_dataset(texts, tokenizer, args.sequence_length)
-
     config = TrainingConfig(
         steps=args.steps,
         batch_size=args.batch_size,
@@ -229,9 +339,21 @@ def cmd_create(args: argparse.Namespace) -> None:
         lora_dropout=args.lora_dropout,
     )
     print(
-        f"Training LoRA adapters: steps={config.steps} batch_size={config.batch_size} lr={config.learning_rate}"
+        f"Training LoRA adapters: steps={config.steps} batch_size={config.batch_size} "
+        f"lr={config.learning_rate} loss_mode={args.loss_mode}"
     )
-    final_loss = train_lora(manager, model, dataset, config)
+    if args.loss_mode == "answer":
+        tokens, masks = build_supervised_token_dataset(
+            Path(args.data),
+            tokenizer,
+            args.sequence_length,
+            chat_template=args.chat_template,
+        )
+        final_loss = train_lora_supervised(manager, model, tokens, masks, config)
+    else:
+        texts = load_jsonl_texts(Path(args.data), tokenizer, args.chat_template)
+        dataset = build_token_dataset(texts, tokenizer, args.sequence_length)
+        final_loss = train_lora(manager, model, dataset, config)
     print(f"Training complete. Final loss={final_loss:.4f}")
 
     tensors, metadata = manager.export_active_pack(
@@ -259,7 +381,6 @@ def cmd_create(args: argparse.Namespace) -> None:
 
 
 def cmd_apply(args: argparse.Namespace) -> None:
-    load_model, _, _ = _require_mlx_lm()
     base_ref = str(args.base)
     base_checkpoint = _resolve_base_checkpoint(base_ref)
     pack_dir = _default_pack_dir(args.name)
@@ -297,7 +418,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
         print(f"Estimated VRAM footprint: {total_bytes / (1024**2):.2f} MB")
         return
 
-    model, _ = load_model(base_ref)
+    model, _ = _load_base_model(base_ref, args.loader)
     manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
     try:
         metadata = manager.apply_pack(pack_dir)
@@ -407,19 +528,37 @@ def cmd_list(args: argparse.Namespace) -> None:
             print("  " + row)
 
 
+def cmd_capabilities(args: argparse.Namespace) -> None:
+    rows = capability_report()
+    if args.json:
+        print(json.dumps(rows, indent=2))
+    else:
+        print("MLX modality capabilities:")
+        for row in rows:
+            status = "installed" if row["installed"] else "missing"
+            version = f" {row['version']}" if row["version"] else ""
+            print(f"  {row['name']:<10} {status}{version}")
+            print(f"    {row['summary']}")
+            print(f"    Features: {', '.join(row['features'])}")
+            print(f"    Commands: {', '.join(row['commands'])}")
+
+    missing = missing_capabilities(rows)
+    if args.check and missing:
+        raise SystemExit(f"Missing MLX modality capabilities: {', '.join(missing)}")
+
+
 def cmd_eval(args: argparse.Namespace) -> None:
-    load_model, eval_ppl, load_data = _require_mlx_lm()
     data_path = args.data_path
 
-    dataset_cached = None
-    dataset_type = None
-    base_logits_sample = None
+    dataset_cached: mx.array | tuple[mx.array, mx.array] | None = None
+    dataset_type: str | None = None
+    base_logits_sample: mx.array | None = None
 
     def evaluate(model_ref: str, pack_dir: Path | None = None) -> dict:
         nonlocal dataset_cached, dataset_type, base_logits_sample
         start_load = time.time()
         base_checkpoint = _resolve_base_checkpoint(model_ref)
-        model, tokenizer = load_model(model_ref)
+        model, tokenizer = _load_base_model(model_ref, args.loader)
         manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=model_ref)
         pack_name = None
         pack_size = 0
@@ -434,13 +573,29 @@ def cmd_eval(args: argparse.Namespace) -> None:
         if dataset_cached is None:
             path_obj = Path(data_path)
             if path_obj.exists() and path_obj.is_file():
-                texts = load_jsonl_texts(path_obj)
-                dataset = build_token_dataset(texts, tokenizer, args.sequence_length)
-                if args.num_samples > 0:
-                    dataset = dataset[: args.num_samples]
-                dataset_cached = dataset
-                dataset_type = "jsonl"
+                if args.loss_mode == "answer":
+                    tokens, masks = build_supervised_token_dataset(
+                        path_obj,
+                        tokenizer,
+                        args.sequence_length,
+                        chat_template=args.chat_template,
+                    )
+                    if args.num_samples > 0:
+                        tokens = tokens[: args.num_samples]
+                        masks = masks[: args.num_samples]
+                    dataset_cached = (tokens, masks)
+                    dataset_type = "jsonl-answer"
+                else:
+                    texts = load_jsonl_texts(path_obj, tokenizer, args.chat_template)
+                    token_dataset = build_token_dataset(texts, tokenizer, args.sequence_length)
+                    if args.num_samples > 0:
+                        token_dataset = token_dataset[: args.num_samples]
+                    dataset_cached = token_dataset
+                    dataset_type = "jsonl"
             else:
+                if args.loss_mode == "answer":
+                    raise SystemExit("--loss-mode answer requires a local JSONL data path")
+                _, _, load_data = _require_mlx_lm()
                 dataset_cached = load_data(
                     tokenizer,
                     data_path,
@@ -449,17 +604,23 @@ def cmd_eval(args: argparse.Namespace) -> None:
                 )
                 dataset_type = "hf"
 
-        dataset = dataset_cached
-        mx.reset_peak_memory()
-        eval_start = time.time()
-        ppl, se = eval_ppl(model, dataset, batch_size=args.batch_size)
-        eval_time = time.time() - eval_start
-        peak_mem = mx.get_peak_memory() / (1024**3)
-        tokens = dataset.shape[0] * (dataset.shape[1] - 1)
-        tps = tokens / max(eval_time, 1e-6)
+        cached_dataset = dataset_cached
+        if dataset_type == "jsonl-answer":
+            assert isinstance(cached_dataset, tuple)
+            tokens, masks = cached_dataset
+            metrics = _evaluate_supervised_perplexity(model, tokens, masks, args.batch_size)
+            diff_batch = tokens[:1]
+        else:
+            assert cached_dataset is not None and not isinstance(cached_dataset, tuple)
+            metrics = _evaluate_perplexity(model, cached_dataset, args.batch_size)
+            diff_batch = cached_dataset[:1]
+        eval_time = metrics["eval_time_s"]
+        ppl = metrics["ppl"]
+        se = metrics["ppl_se"]
+        peak_mem = metrics["vram_peak"]
+        tps = metrics["tps"]
 
-        batch = dataset[:1]
-        logits = model(batch[:, :-1]).astype(mx.float32)
+        logits = model_logits(model, diff_batch[:, :-1]).astype(mx.float32)
         mx.eval(logits)
         max_diff = 0.0
         if base_logits_sample is None:
@@ -470,20 +631,40 @@ def cmd_eval(args: argparse.Namespace) -> None:
 
         token_accuracy = None
         if dataset_type == "jsonl":
+            assert cached_dataset is not None and not isinstance(cached_dataset, tuple)
             correct = 0.0
             total = 0
-            for start_idx in range(0, dataset.shape[0], args.batch_size):
-                batch_tokens = dataset[start_idx : start_idx + args.batch_size]
+            for start_idx in range(0, cached_dataset.shape[0], args.batch_size):
+                batch_tokens = cached_dataset[start_idx : start_idx + args.batch_size]
                 if batch_tokens.shape[0] == 0:
                     continue
                 inputs = batch_tokens[:, :-1]
                 targets = batch_tokens[:, 1:]
-                preds = mx.argmax(model(inputs), axis=-1)
+                preds = mx.argmax(model_logits(model, inputs), axis=-1)
                 matches = mx.equal(preds, targets).astype(mx.float32)
                 correct += float(mx.sum(matches).item())
                 total += int(targets.size)
             if total > 0:
                 token_accuracy = correct / float(total)
+        elif dataset_type == "jsonl-answer":
+            assert isinstance(cached_dataset, tuple)
+            tokens, masks = cached_dataset
+            correct = 0.0
+            total_answer = 0.0
+            for start_idx in range(0, tokens.shape[0], args.batch_size):
+                batch_tokens = tokens[start_idx : start_idx + args.batch_size]
+                batch_masks = masks[start_idx : start_idx + args.batch_size]
+                if batch_tokens.shape[0] == 0:
+                    continue
+                inputs = batch_tokens[:, :-1]
+                targets = batch_tokens[:, 1:]
+                target_mask = batch_masks[:, 1:]
+                preds = mx.argmax(model_logits(model, inputs), axis=-1)
+                matches = mx.equal(preds, targets).astype(mx.float32) * target_mask
+                correct += float(mx.sum(matches).item())
+                total_answer += float(mx.sum(target_mask).item())
+            if total_answer > 0:
+                token_accuracy = correct / total_answer
 
         return {
             "model": model_ref,
@@ -498,6 +679,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
             "peak_memory_gb": peak_mem,
             "max_logit_diff": max_diff,
             "token_accuracy": token_accuracy,
+            "loss_mode": args.loss_mode,
         }
 
     base_metrics = evaluate(str(args.base), None)
@@ -531,14 +713,13 @@ def cmd_eval(args: argparse.Namespace) -> None:
 
 
 def cmd_eval_batch(args: argparse.Namespace) -> None:
-    load_model, _, _ = _require_mlx_lm()
     base_ref = str(args.base)
     base_checkpoint = _resolve_base_checkpoint(base_ref)
     batch_sizes = parse_batch_sizes(args.batch_size)
     thinking_mode, cap_tokens = parse_thinking_option(args.thinking)
     prompts_by_domain = load_domain_prompts(Path(args.input), thinking_mode, cap_tokens)
 
-    model, tokenizer = load_model(base_ref)
+    model, tokenizer = _load_base_model(base_ref, args.loader)
     manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
 
     datasets: Dict[str, mx.array] = {}
@@ -636,7 +817,6 @@ def cmd_eval_batch(args: argparse.Namespace) -> None:
 
 
 def cmd_route(args: argparse.Namespace) -> None:
-    load_model = _require_load_model()
     base_ref = str(args.base)
     base_checkpoint = _resolve_base_checkpoint(base_ref)
     domain_map_path = Path(args.domain_map)
@@ -654,7 +834,7 @@ def cmd_route(args: argparse.Namespace) -> None:
 
     print(f"Loaded {len(domain_map)} domain entries from {domain_map_path}")
     print(f"Loading base model from {base_ref}...")
-    model, tokenizer = load_model(base_ref)
+    model, tokenizer = _load_base_model(base_ref, args.loader)
     manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
     router = DomainPackRouter(
         manager,
@@ -692,7 +872,7 @@ def cmd_route(args: argparse.Namespace) -> None:
             if args.probe_forward:
                 tokens = _tokenise_prompt(tokenizer, str(prompt), args.max_tokens)
                 start = time.time()
-                logits = model(tokens)
+                logits = model_logits(model, tokens)
                 mx.eval(logits)
                 forward_ms = (time.time() - start) * 1000.0
                 forward_total_ms += forward_ms
@@ -732,7 +912,7 @@ def cmd_route(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="packs", description="Manage GPT-2 LoRA skill packs")
+    parser = argparse.ArgumentParser(prog="packs", description="Manage MLX LoRA skill packs")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     create = subparsers.add_parser("create", help="Train and export a LoRA pack")
@@ -740,9 +920,15 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. qwen3-4b-2507-mlx-4bit, qwen3-4b-thinking-2507-mlx-4bit, llama-3-8b-instruct-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
     )
     create.add_argument("--layers", default="attn.q_proj,attn.k_proj,attn.v_proj")
+    create.add_argument(
+        "--loader",
+        choices=["auto", "mlx-lm", "mlx-vlm"],
+        default="auto",
+        help="Model loader; auto uses mlx-vlm for Gemma 4 unified any-to-any bases.",
+    )
     create.add_argument(
         "--rank-strategy",
         choices=["stable", "theorem"],
@@ -762,11 +948,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tolerance for theorem-guided rank selection",
     )
     create.add_argument("--data", required=True)
+    create.add_argument(
+        "--chat-template",
+        action="store_true",
+        help="Render JSONL messages/prompt+answer through the tokenizer chat template before tokenizing.",
+    )
+    create.add_argument(
+        "--loss-mode",
+        choices=["full", "answer"],
+        default="full",
+        help="Training loss target: full text or answer-only supervised loss for JSONL prompt/answer data.",
+    )
     create.add_argument("--steps", type=int, default=1500)
     create.add_argument("--batch-size", type=int, default=4)
     create.add_argument("--learning-rate", "--lr", dest="learning_rate", type=float, default=1e-4)
     create.add_argument("--sequence-length", type=int, default=128)
     create.add_argument("--seed", type=int, default=42)
+    create.add_argument(
+        "--rank",
+        type=_parse_rank,
+        help="Use one explicit rank for every selected target instead of automatic rank selection.",
+    )
     create.add_argument(
         "--min-rank",
         type=_parse_min_rank,
@@ -795,7 +997,13 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. qwen3-4b-2507-mlx-4bit, qwen3-4b-thinking-2507-mlx-4bit, llama-3-8b-instruct-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
+    )
+    apply.add_argument(
+        "--loader",
+        choices=["auto", "mlx-lm", "mlx-vlm"],
+        default="auto",
+        help="Model loader; auto uses mlx-vlm for Gemma 4 unified any-to-any bases.",
     )
     apply.add_argument("--out", default="run/session_state.json")
     apply.add_argument("--dry-run", action="store_true")
@@ -812,14 +1020,47 @@ def build_parser() -> argparse.ArgumentParser:
     list_cmd = subparsers.add_parser("list", help="List available packs")
     list_cmd.set_defaults(func=cmd_list)
 
+    capabilities = subparsers.add_parser(
+        "capabilities",
+        help="Report optional MLX modality packages available in this environment",
+    )
+    capabilities.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable capability status",
+    )
+    capabilities.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit non-zero when any MLX modality package is missing",
+    )
+    capabilities.set_defaults(func=cmd_capabilities)
+
     eval_cmd = subparsers.add_parser("eval", help="Compare base vs pack on perplexity and performance")
     eval_cmd.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. qwen3-4b-2507-mlx-4bit, qwen3-4b-thinking-2507-mlx-4bit, llama-3-8b-instruct-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
+    )
+    eval_cmd.add_argument(
+        "--loader",
+        choices=["auto", "mlx-lm", "mlx-vlm"],
+        default="auto",
+        help="Model loader; auto uses mlx-vlm for Gemma 4 unified any-to-any bases.",
     )
     eval_cmd.add_argument("--pack", help="Pack name to evaluate alongside base")
     eval_cmd.add_argument("--data-path", default="roneneldan/TinyStories")
+    eval_cmd.add_argument(
+        "--chat-template",
+        action="store_true",
+        help="Render local JSONL messages/prompt+answer through the tokenizer chat template before tokenizing.",
+    )
+    eval_cmd.add_argument(
+        "--loss-mode",
+        choices=["full", "answer"],
+        default="full",
+        help="Evaluation loss target: full text or answer-only supervised loss for local JSONL prompt/answer data.",
+    )
     eval_cmd.add_argument("--sequence-length", type=int, default=128)
     eval_cmd.add_argument("--num-samples", type=int, default=100)
     eval_cmd.add_argument("--batch-size", type=int, default=8)
@@ -834,7 +1075,13 @@ def build_parser() -> argparse.ArgumentParser:
     eval_batch.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. qwen3-4b-2507-mlx-4bit, qwen3-4b-thinking-2507-mlx-4bit, llama-3-8b-instruct-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
+    )
+    eval_batch.add_argument(
+        "--loader",
+        choices=["auto", "mlx-lm", "mlx-vlm"],
+        default="auto",
+        help="Model loader; auto uses mlx-vlm for Gemma 4 unified any-to-any bases.",
     )
     eval_batch.add_argument("--pack", help="Pack name to evaluate (under packs/<name>)")
     eval_batch.add_argument("--input", required=True, help="Path to prompts JSONL grouped by domain")
@@ -861,6 +1108,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--base",
         required=True,
         help="Base model path or ID",
+    )
+    route.add_argument(
+        "--loader",
+        choices=["auto", "mlx-lm", "mlx-vlm"],
+        default="auto",
+        help="Model loader; auto uses mlx-vlm for Gemma 4 unified any-to-any bases.",
     )
     route.add_argument(
         "--domain-map",
