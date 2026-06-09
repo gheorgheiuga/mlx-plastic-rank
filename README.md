@@ -46,6 +46,7 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 - Instruction-tuned UX smoke: `uv run --extra packs python scripts/gemma4_smoke.py --models mlx-community/gemma-4-12B-it-qat-mxfp8 --chat-template --max-tokens 32`.
 - Heavy packs (bigger ranks + larger size cap): add `--profile heavy` to `packs create` when you want higher-capacity domain packs loaded on demand from SSD.
 - To force heavier adapters even when auto-rank would stay small, add `--min-rank 16` (or higher; values snap to allowed heavy ranks). To bypass auto-rank entirely for controlled sweeps, use `--rank N`.
+- To continue a trained heterogeneous pack with fixed ranks, use `--resume-pack SOURCE_PACK`. To train fresh weights from a discovered heterogeneous rank map, use `--rank-map-from-pack SOURCE_PACK`.
 
 ### IndustryBench Pilot
 Use Alibaba's IndustryBench as a small industrial QA pack probe. The extractor keeps source metadata in JSON fields while letting the training text stay clean.
@@ -87,7 +88,21 @@ Use dynamic rank when you want the pack to start small and earn capacity during 
 Example fault-code run:
 `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-dynamic-r32-init4-300 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 300 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 32 --profile heavy --lora-dropout 0.05 --dynamic-rank --dynamic-initial-rank 4 --dynamic-rank-warmup 50 --dynamic-rank-interval 25 --dynamic-grow-threshold 0.25 --dynamic-prune-threshold 0.03`
 
-This mode is implemented and unit-tested; it still needs a real Gemma fault-code bakeoff against fixed `r16`/`r32` before claiming quality-per-MB wins.
+Two follow-up paths are useful after a dynamic discovery run:
+- Continue the discovered map with its learned weights frozen at exported ranks: `uv run --extra packs packs create --name phase-two --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --resume-pack fault-codes-gemma4-it-answer-dynamic-r32-init8-min4-150 --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 450 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --profile heavy --lora-dropout 0.05`
+- Train fresh weights from only the discovered heterogeneous rank map: `uv run --extra packs packs create --name hetero-scratch --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-map-from-pack fault-codes-gemma4-it-answer-dynamic-r32-init8-min4-150 --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 600 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --profile heavy --lora-dropout 0.05`
+
+Current fault-code 600-step bakeoff, all on Gemma 4 12B IT QAT mxfp8 with 300 answer-only eval samples and 8 generation-check examples:
+
+| Pack | Size | Effective rank | Answer PPL | Token Acc. | Generation solution-overlap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| base | 0 MB | - | 15.4316 | 0.6155 | 0.2723 |
+| fixed r16 / 600 steps | 27.10 MB | 2176 | 8.6158 | 0.6507 | 0.2924 |
+| dynamic two-phase 150+450 | 27.39 MB | 2288 | 6.2071 | 0.6734 | 0.3911 |
+| discovered map from scratch / 600 steps | 27.39 MB | 2288 | 5.7811 | 0.6773 | 0.3911 |
+| fixed r32 / 600 steps | 54.16 MB | 4352 | 5.6365 | 0.6802 | 0.4025 |
+
+Evidence status: this is a quality-positive local result for one industrial fault-code domain, not proof of the Pop Rank theorem. The strongest signal is the discovered-map-from-scratch run: it nearly matches fixed `r32/600` while exporting roughly half the adapter bytes, and it strongly beats the same-size fixed `r16/600` baseline. Use `out/fault_codes_all4_plus_base_eval_300.{json,csv}` as the compact artifact for this comparison.
 
 ### On-Demand Domain Routing (TTL + LRU)
 Run a core model and attach/detach packs on demand using domain labels:
