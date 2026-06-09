@@ -7,7 +7,8 @@ Before publishing or sharing generated data:
 
 - Keep `source_dataset`, `source_dataset_url`, and license fields from the
   extraction scripts.
-- Update `NOTICE.md` if the source dataset, model, license, or citation changes.
+- Update `NOTICE.md` when a source dataset, model, license, or citation is
+  referenced by repository docs/scripts or shipped with a published artifact.
 - Treat `fault_codes_*.jsonl` as CC BY-NC 4.0 derived research/prototype data
   unless commercial rights are resolved.
 - Treat `industrybench_en_*.jsonl` as MIT-licensed IndustryBench derived data
