@@ -1,14 +1,33 @@
 # mlx-plastic-rank
 
-Adaptive low-rank compression for MLX with neuroplastic “wake and sleep” triggers. The toolkit re-expresses pruned weights as reversible low-rank factors so capacity can shrink, regrow, or park on demand while preserving the base checkpoint.
+Local low-rank adaptation experiments for MLX. The practical goal is a general-capable base model that can load small domain "skill packs"; the Pop Rank research question is whether LoRA rank can describe useful added capability, not just adapter size.
+
+## Current Thesis
+Static LoRA rank is normally treated as a fixed hyperparameter. Pop Rank explores a different path: let training discover where adapter capacity is useful, measure that rank allocation, and then test whether the discovered heterogeneous map can deliver similar quality with fewer exported adapter bytes.
+
+This is still research. The repo now has working mechanics for dynamic active-rank gates, frozen heterogeneous continuation, fresh training from a discovered rank map, and a rank ledger for measuring effective rank, slack, and pack overlap. The current evidence is quality-positive on one local industrial-domain experiment; it is not proof of a general theorem.
+
+## Current Best Signal
+Fault-code maintenance pack experiment on `mlx-community/gemma-4-12B-it-qat-mxfp8`, evaluated with 300 answer-only held-out samples and 8 generation-check examples:
+
+| Model/pack | Size | Effective rank | Answer PPL | Token Acc. | Generation solution-overlap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| base | 0 MB | - | 15.4316 | 0.6155 | 0.2723 |
+| fixed r16 / 600 steps | 27.10 MB | 2176 | 8.6158 | 0.6507 | 0.2924 |
+| dynamic two-phase 150+450 | 27.39 MB | 2288 | 6.2071 | 0.6734 | 0.3911 |
+| discovered map from scratch / 600 steps | 27.39 MB | 2288 | 5.7811 | 0.6773 | 0.3911 |
+| fixed r32 / 600 steps | 54.16 MB | 4352 | 5.6365 | 0.6802 | 0.4025 |
+
+The strongest signal is the discovered-map-from-scratch run: dynamic rank was used to discover a per-layer heterogeneous rank map, then fresh adapters were trained from that map. It nearly matches fixed `r32/600` while exporting roughly half the adapter bytes, and it strongly beats the same-size fixed `r16/600` baseline. Use `out/fault_codes_all4_plus_base_eval_300.{json,csv}` as the compact artifact for this comparison.
 
 ## Why Plastic Rank?
-Traditional pruning and distillation discard parameters permanently. Plastic rank treats compression as a reversible transformation: slices are factored into low-rank adapters that can be re-activated when conditions warrant. The result is a tunable system that keeps accuracy, exposes rank controls, and surfaces clear telemetry for every change.
+Traditional pruning and distillation discard parameters permanently. Plastic rank started as a reversible compression idea: slices are factored into low-rank adapters that can be re-activated when conditions warrant. The pack tooling extends that rank-control surface from compression into local domain adaptation.
 
 ## Key Capabilities
 - Dynamic low-rank factors with deterministic MLX kernels
 - Plasticity manager for pruning/waking flows and rank heuristics
 - LoRA “skill pack” CLI for training, exporting, and evaluating adapters
+- Dynamic Pop Rank gates, frozen heterogeneous continuations, and fresh rank-map ablations
 - SafeTensors export utilities plus inspection and logging helpers
 - Benchmarks and demos for profiling rank/latency trade-offs
 
@@ -73,10 +92,10 @@ Use `avneetsingla/industrial-fault-codes-sample` for the first practical industr
 | r32 / 100 steps | 54.16 MB | 12.8972 | -16.42% | 0.6259 | not run |
 | r32 / 300 steps | 54.16 MB | 8.5175 | -44.80% | 0.6513 | 0.3619 |
 
-Best current result: `fault-codes-gemma4-it-answer-r32-300`. Rank 16 / 300 is the best smaller pack by PPL-per-MB, but rank 32 / 300 is the first pack that improves both full-token eval and generated solution-keyword overlap.
+Best 300-step fixed-rank sweep result: `fault-codes-gemma4-it-answer-r32-300`. Rank 16 / 300 is the best smaller pack by PPL-per-MB in that sweep, but rank 32 / 300 is the first pack that improves both full-token eval and generated solution-keyword overlap. The newer 600-step Pop Rank bakeoff is summarized near the top of this README.
 
-### Pop-Theorem Rank Ledger
-Use the rank ledger to measure the algebraic footprint of a pack before claiming that rank selection improved. It reconstructs each LoRA update in compressed form and reports effective rank, slack, stable rank, per-target rank budget, and pairwise pack overlap/composition.
+### Pop Rank Ledger
+Use the rank ledger to measure the algebraic footprint of a pack before claiming that rank allocation improved. It reconstructs each LoRA update in compressed form and reports effective rank, slack, stable rank, per-target rank budget, and pairwise pack overlap/composition.
 - Inspect one pack: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_ledger_r32_300.json --csv out/fault_codes_rank_ledger_r32_300.csv`
 - Compare two packs: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r16-300 --compare fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_compare_r16_300_vs_r32_300.json --csv out/fault_codes_rank_compare_r16_300_vs_r32_300.csv`
 
@@ -92,17 +111,7 @@ Two follow-up paths are useful after a dynamic discovery run:
 - Continue the discovered map with its learned weights frozen at exported ranks: `uv run --extra packs packs create --name phase-two --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --resume-pack fault-codes-gemma4-it-answer-dynamic-r32-init8-min4-150 --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 450 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --profile heavy --lora-dropout 0.05`
 - Train fresh weights from only the discovered heterogeneous rank map: `uv run --extra packs packs create --name hetero-scratch --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-map-from-pack fault-codes-gemma4-it-answer-dynamic-r32-init8-min4-150 --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 600 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --profile heavy --lora-dropout 0.05`
 
-Current fault-code 600-step bakeoff, all on Gemma 4 12B IT QAT mxfp8 with 300 answer-only eval samples and 8 generation-check examples:
-
-| Pack | Size | Effective rank | Answer PPL | Token Acc. | Generation solution-overlap |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| base | 0 MB | - | 15.4316 | 0.6155 | 0.2723 |
-| fixed r16 / 600 steps | 27.10 MB | 2176 | 8.6158 | 0.6507 | 0.2924 |
-| dynamic two-phase 150+450 | 27.39 MB | 2288 | 6.2071 | 0.6734 | 0.3911 |
-| discovered map from scratch / 600 steps | 27.39 MB | 2288 | 5.7811 | 0.6773 | 0.3911 |
-| fixed r32 / 600 steps | 54.16 MB | 4352 | 5.6365 | 0.6802 | 0.4025 |
-
-Evidence status: this is a quality-positive local result for one industrial fault-code domain, not proof of the Pop Rank theorem. The strongest signal is the discovered-map-from-scratch run: it nearly matches fixed `r32/600` while exporting roughly half the adapter bytes, and it strongly beats the same-size fixed `r16/600` baseline. Use `out/fault_codes_all4_plus_base_eval_300.{json,csv}` as the compact artifact for this comparison.
+The current 600-step fault-code bakeoff is summarized near the top of this README. Treat it as a quality-positive local result for one industrial domain, not proof of the Pop Rank theorem.
 
 ### On-Demand Domain Routing (TTL + LRU)
 Run a core model and attach/detach packs on demand using domain labels:
