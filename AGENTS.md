@@ -23,5 +23,8 @@ Write imperative, scoped commit messages (e.g. `feat(rank): add prune threshold`
 ## Research & Decision Records
 Treat `codex/decisions.md` as the canonical decision index. When adding or changing a DSN in `codex/dsn/`, update `codex/dsn/dsn-log.md` and either add a matching entry in `codex/decisions.md` or keep the DSN status as `Proposed`/`Experimental`. Do not mark a DSN `Accepted` when it only proves scaffolding, mechanics, or a hypothesis; record the evidence status separately and name the validation or falsification test that would promote it. For Pop Rank/theorem work, distinguish implementation instrumentation from proof of quality benefit, and keep unresolved validation gaps visible in the decision record.
 
+## License & Attribution
+When adding or changing datasets, generated JSONL samples, model checkpoints, copied snippets, or benchmark artifacts, update `NOTICE.md` and any local generator metadata. Keep generated data under `data/` ignored by default, and use `data/README.md` to document source/license expectations for regenerated files.
+
 ## Security & Configuration Tips
 Pin Python via `.python-version` (3.13) and prefer a local `.venv` for isolation. MLX targets Apple Silicon—follow upstream install guidance. Do not commit checkpoints, large datasets, or secrets; respect `.gitignore` and export artifacts via SafeTensors when needed.

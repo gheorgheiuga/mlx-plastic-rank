@@ -15,10 +15,13 @@ SAMPLE_ROW = {
 
 
 def test_build_example_creates_diagnostic_prompt():
-    example = fault_codes_extract.build_example(SAMPLE_ROW, "dataset/id")
+    example = fault_codes_extract.build_example(SAMPLE_ROW, fault_codes_extract.DATASET_ID)
 
     assert example is not None
     assert example["id"] == "abb-10-fault-code-solution"
+    assert example["source_dataset_url"] == fault_codes_extract.DATASET_URL
+    assert example["source_license"] == "CC BY-NC 4.0"
+    assert example["source_license_url"] == "https://creativecommons.org/licenses/by-nc/4.0/"
     assert example["domain"] == "industrial_fault_diagnostics"
     assert "Manufacturer: ABB" in example["prompt"]
     assert "Fault code: 10" in example["prompt"]

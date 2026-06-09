@@ -12,6 +12,12 @@ from typing import Any, Iterable
 
 DATASET_ID = "alibaba-multimodal-industrial-ai/IndustryBench"
 DATASET_SERVER = "https://datasets-server.huggingface.co"
+DATASET_URL = f"https://huggingface.co/datasets/{DATASET_ID}"
+DATASET_LICENSE = "MIT"
+DATASET_CITATION = (
+    "Bai et al. (2026), IndustryBench: Probing the Industrial Knowledge Boundaries of LLMs, "
+    "arXiv:2605.10267"
+)
 LANGUAGE_FIELDS = {
     "zh": ("question", "answer"),
     "en": ("question_en", "answer_en"),
@@ -120,6 +126,19 @@ def build_prompt(
     return "\n".join(parts).strip()
 
 
+def dataset_notice(dataset: str) -> dict[str, str]:
+    notice = {"source_dataset_url": f"https://huggingface.co/datasets/{dataset}"}
+    if dataset == DATASET_ID:
+        notice.update(
+            {
+                "source_license": DATASET_LICENSE,
+                "source_attribution": DATASET_ID,
+                "source_citation": DATASET_CITATION,
+            }
+        )
+    return notice
+
+
 def build_example(
     row: dict[str, Any],
     language: str,
@@ -147,6 +166,7 @@ def build_example(
     return {
         "id": f"{source_id}:{language}",
         "source_dataset": dataset,
+        **dataset_notice(dataset),
         "source_row_idx": row.get("_row_idx"),
         "source_id": source_id,
         "language": language,
@@ -278,6 +298,7 @@ def main() -> None:
     eval_out = args.eval_out or default_output("industrybench", suffix, "eval")
     summary = {
         "dataset": args.dataset,
+        **dataset_notice(args.dataset),
         "source_rows": len(rows),
         "examples": len(examples),
         "languages": list(languages),
