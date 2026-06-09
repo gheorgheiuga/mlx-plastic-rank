@@ -30,4 +30,5 @@ Run these commands before opening a pull request. If CI uncovers issues unique t
 ## Release Checklist
 - Update the version in `pyproject.toml`.
 - Ensure CI is green on the latest macOS/MLX runner.
+- Review `NOTICE.md` and `data/README.md` for dataset, model, and generated-artifact attribution.
 - Tag and publish: `git tag vX.Y.Z && git push origin vX.Y.Z`.

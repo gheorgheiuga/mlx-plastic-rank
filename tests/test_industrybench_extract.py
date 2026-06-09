@@ -25,12 +25,15 @@ def test_build_example_formats_pack_ready_text():
         include_knowledge=False,
         knowledge_char_limit=8,
         metadata_mode="full",
-        dataset="dataset/id",
+        dataset=industrybench_extract.DATASET_ID,
     )
 
     assert example is not None
     assert example["id"] == "42:en"
     assert example["source_row_idx"] == 7
+    assert example["source_dataset_url"] == industrybench_extract.DATASET_URL
+    assert example["source_license"] == "MIT"
+    assert "arXiv:2605.10267" in example["source_citation"]
     assert example["domain"] == "industrial procurement"
     assert "Question:\nWhich part should be replaced?" in example["text"]
     assert example["text"].endswith("Answer:\nReplace the worn bearing.")
