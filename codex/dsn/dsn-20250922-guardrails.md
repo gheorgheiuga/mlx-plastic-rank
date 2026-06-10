@@ -8,7 +8,7 @@
 ---
 
 ## Context
-- Current packs CLI enforces `(2,4,8)` rank choices and <=6/12 MB size gates for Qwen3 4-bit.
+- Current packs CLI enforces a small rank ladder and pack size gates for lite profiles.
 - Pop-theorem rank selection occasionally returns values outside the set if unrestricted.
 - We need clarity on whether to keep guardrails or allow flexible ranks/size.
 
@@ -38,4 +38,3 @@
 - [ ] Document behaviour in runbook + release notes.
 
 ---
-

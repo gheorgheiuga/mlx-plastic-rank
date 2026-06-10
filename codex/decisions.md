@@ -25,7 +25,7 @@
 - **Date:** 2026-06-08
 - **Status:** Accepted as implementation direction; evidence remains experimental
 - **DSN:** `codex/dsn/dsn-20260608-gemma4-12b.md`
-- **Context:** The project needed a larger multimodal-capable base and industrial-domain benchmark path after earlier Qwen pack experiments showed mechanics without strong domain lift.
+- **Context:** The project needed a larger multimodal-capable base and industrial-domain benchmark path after earlier text-only pack experiments showed mechanics without strong domain lift.
 - **Decision:** Target Gemma 4 12B mxfp8 as the default pilot base for unified any-to-any packs, keep bf16 as reference, and use the fault-code/IndustryBench tooling as the first industrial evaluation surface.
 - **Consequences:** The codebase now carries Gemma 4 smoke, extraction, and dataset helpers. The decision does not prove useful domain adaptation yet; real 12B pack training and quality lift remain validation gates.
 
@@ -44,3 +44,20 @@
 - **Context:** Static rank ceilings could not test whether adapters should grow or shrink rank during training.
 - **Decision:** Treat `--rank` as a ceiling, add active-rank gates, allow grow/shrink behavior from learned rank signals, and export only active columns.
 - **Consequences:** Dynamic rank mechanics can now be tested behind CLI flags. The current signal is adapter-level utility from learned factor norms, not a validation-loss oracle; quality-per-MB benefit still needs benchmark evidence before stronger claims.
+
+## ADR-0007 — Low-Spectrum Key Projection Rank Map
+- **Date:** 2026-06-09
+- **Status:** Accepted as local experimental direction; broader validation remains experimental
+- **DSN:** `codex/dsn/dsn-20260609-low-spectrum-key-adaptation.md`
+- **Context:** Pop polynomial probes showed generic matrix-polynomial identities are valid rank accounting but not direct rank selectors. The stronger local signal was that trained Gemma fault-code `k_proj` adapters, especially full-attention key projections, carried elevated low-spectrum energy while `q_proj` and `v_proj` stayed near baseline.
+- **Decision:** Use spectral notch diagnostics to build same-budget rank-map candidates that promote high-lift full-attention `k_proj` adapters and compensate by reducing lower-signal `q_proj` ranks.
+- **Consequences:** The first candidate, `spectral-key-candidate`, beat the current hetero map on held-out answer-token PPL/accuracy at essentially equal size and matched its generation overlap check. This validates the local rank-map direction for the fault-code pilot; it does not prove a general Pop Rank theorem advantage and should be repeated across seed/dataset/base before broader claims.
+
+## ADR-0008 — Domain Pack Proof Reports
+- **Date:** 2026-06-09
+- **Status:** Accepted as productization gate; broader validation remains experimental
+- **DSN:** `codex/dsn/dsn-20260609-domain-pack-proof.md`
+- **Context:** The DLC-style pack claim was supported by separate training, eval, generation, and ledger artifacts, but the repo lacked a machine-checkable pass/fail report tying those artifacts together.
+- **Decision:** Add `packs proof` to audit artifact-backed domain improvement claims: pack exists, training/eval data exist, base and base+pack eval rows match, attach changes logits, held-out metrics improve, and optional generation/ledger gates pass.
+- **Evidence update:** A full-split Gemma 4 IT fault-code bakeoff on 2,700 train / 300 held-out rows shows the fixed r32 pack is the local quality ceiling (PPL 5.5622, token accuracy 0.6802, 54.16 MB), while the learned hetero rank-map pack is the best size/quality tradeoff (PPL 5.9406, token accuracy 0.6748, 23.73 MB) and passes `packs proof`.
+- **Consequences:** The repo can now prove the local industrial fault-code base+pack workflow from artifacts. Newly created packs record training provenance in metadata. This validates a product-style proof path for one domain and a local size/quality tradeoff result, not a universal Pop Rank quality claim.

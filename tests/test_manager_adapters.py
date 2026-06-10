@@ -55,7 +55,7 @@ class SeparateModel:
     def __init__(self, layers: int = 1, hidden: int = 8):
         self.model = types.SimpleNamespace(layers=[SeparateBlock(hidden) for _ in range(layers)])
         self.config = types.SimpleNamespace(hidden_size=hidden)
-        self.model_type = "qwen3"
+        self.model_type = "gemma"
 
 
 class QuantizedAttention:
@@ -90,7 +90,7 @@ class QuantizedModel:
         self.model = types.SimpleNamespace(
             layers=[QuantizedBlock(hidden, n_heads, n_kv_heads) for _ in range(layers)]
         )
-        self.model_type = "qwen3"
+        self.model_type = "gemma"
 
 
 class GemmaUnifiedAttention:

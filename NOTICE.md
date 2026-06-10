@@ -46,11 +46,3 @@ redistributing weights, generated packs, or derived artifacts.
   an explicit license tag. Treat it as subject to the upstream Gemma 4 / Google
   model terms until the card is made explicit, and do not redistribute weights or
   packs trained from it without confirming the applicable terms.
-
-- `mlx-community/Qwen2.5-1.5B-Instruct-4bit` is an MLX checkpoint whose
-  Hugging Face card lists `apache-2.0` and links to the upstream Qwen license:
-  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct/blob/main/LICENSE.
-
-- Historical Qwen3 pilot examples in contributor docs may reference
-  `qwen3-4b-2507-mlx-4bit`. Confirm the current upstream repository and license
-  before publishing weights, packs, or evaluation artifacts based on that model.

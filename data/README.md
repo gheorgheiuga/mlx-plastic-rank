@@ -17,6 +17,8 @@ Before publishing or sharing generated data:
 Current local generators:
 
 - `scripts/fault_codes_extract.py` -> `fault_codes_train.jsonl`,
-  `fault_codes_eval.jsonl`
+  `fault_codes_eval.jsonl`; pass `--train-size 2700 --eval-size 300` for the
+  full local `fault_codes_train_full2700.jsonl` /
+  `fault_codes_eval_full300.jsonl` split used by the June 2026 bakeoff.
 - `scripts/industrybench_extract.py` -> `industrybench_en_train.jsonl`,
   `industrybench_en_eval.jsonl`

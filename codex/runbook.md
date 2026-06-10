@@ -28,6 +28,7 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
   - Inspect: `uv run packs inspect --name domain-demo`
   - Apply safely: `uv run packs apply --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
   - Evaluate: `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
+  - Prove a DLC-style domain improvement from artifacts: `uv run packs proof --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --domain my-domain --train-data data/domain_prompts.jsonl --eval-report results.json`
   - Prompt/answer data: add `--loss-mode answer` to train/evaluate only assistant answer tokens. Use this for maintenance, diagnostic, and support-style packs where prompts are conditioning context.
 - IndustryBench pilot:
   - Extract clean English Q/A text: `uv run python scripts/industrybench_extract.py --language en --source-limit 512 --train-size 128 --eval-size 32 --metadata-mode none --train-out data/industrybench_en_train.jsonl --eval-out data/industrybench_en_eval.jsonl`
@@ -60,6 +61,13 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
   - Train with gated active ranks: `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-dynamic-r32-init4-300 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 300 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 32 --profile heavy --lora-dropout 0.05 --dynamic-rank --dynamic-initial-rank 4 --dynamic-rank-warmup 50 --dynamic-rank-interval 25 --dynamic-grow-threshold 0.25 --dynamic-prune-threshold 0.03`
   - Meaning: `--rank` is the ceiling, not the exported rank. Adapters start at `--dynamic-initial-rank`; high-signal adapters grow along the allowed rank ladder; low-signal adapters stay small or shrink. Export writes only active rank columns.
   - Status: implemented and unit-tested, not yet validated on a real Gemma fault-code run.
+- Pop polynomial probe:
+  - Toy identity check: `uv run python scripts/pop_polynomial_probe.py --spectral-notch low:2 --out out/pop_polynomial_probe_toy.json`
+  - Generate the automatic spectral-key rank map from the all-layer q/k/v spectral probes: `uv run --extra packs packs rank-map spectral --source-pack fault-codes-gemma4-it-answer-hetero-r32-init8-min4-map-600 --q-spectral out/pop_poly_q_all_layers_low_mid_high_seed5.json --k-spectral out/pop_poly_k_all_layers_low_mid_high_seed5.json --v-spectral out/pop_poly_v_all_layers_low_mid_high_seed5.json --profile heavy --out out/pop_poly_rank_map_spectral_auto_balanced.json`
+  - Train a standalone spectral-key candidate map: `uv run --extra packs packs create --name spectral-key-candidate --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-map-json out/pop_poly_spectral_key_rank_map_candidate.json --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 600 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --profile heavy --lora-dropout 0.05`
+  - Generate the DLC proof report: `uv run --extra packs packs proof --base mlx-community/gemma-4-12B-it-qat-mxfp8 --pack spectral-key-candidate --domain industrial-fault-codes --train-data data/fault_codes_train.jsonl --eval-data data/fault_codes_eval.jsonl --eval-report out/fault_codes_gemma4_it_answer_spectral_key_candidate_eval_300.json --generation-report out/fault_codes_generation_spectral_key_candidate_8.json --ledger-report out/fault_codes_rank_ledger_spectral_key_candidate.json --require-generation --require-ledger --fail-on-regression --out out/fault_codes_domain_pack_proof_spectral_key_candidate.json`
+  - Result: `spectral-key-candidate` exported at 27.38 MB with 2,316 effective rank, PPL 5.7641, token accuracy 0.6786, and generation solution-overlap 0.3911. It slightly beats the current hetero map at equal size on held-out PPL/accuracy and matches its generation overlap, but fixed `r32/600` remains best absolute quality at 54.16 MB.
+  - Proof: `out/fault_codes_domain_pack_proof_spectral_key_candidate.json` passes all gates for the local industrial fault-code domain: pack artifact exists, training/eval data exist, attach changes logits, answer-token PPL and token accuracy improve, generation keyword overlap improves, and rank ledger shows active adapter capacity.
 - Compression baseline: `uv run python scripts/compress_llm_mlx.py --hf mlx-community/gemma-4-12B-mxfp8 --out out/gemma4_mxfp8_compressed --svd randomized --batch-size 20`
 - QA: `uv run pytest -q`, `uv run ruff check`, `uv run mypy`
 
@@ -87,9 +95,9 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
 - Perf sanity: `uv run python scripts/bench_memory.py --m 2048 --n 512`
 - Pack smoke test (manual for now):
   - `uv run packs inspect --name noop`
-  - `uv run packs apply --name noop --base qwen3-4b-2507-mlx-4bit --dry-run`
-  - `uv run packs eval --base qwen3-4b-2507-mlx-4bit --pack noop --data-path data/domain_prompts.jsonl --csv eval_noop.csv`
-  - `uv run packs eval-batch --base qwen3-4b-2507-mlx-4bit --pack noop --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip`
+  - `uv run packs apply --name noop --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
+  - `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack noop --data-path data/domain_prompts.jsonl --csv eval_noop.csv`
+  - `uv run packs eval-batch --base mlx-community/gemma-4-12B-mxfp8 --pack noop --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip`
 
 ## Research Inbox Guidance
 Log new papers or experiments under “Research Inbox” below using the template. When an entry drives a decision, add an ADR in `codex/decisions.md` or a DSN and reference it from the PR.

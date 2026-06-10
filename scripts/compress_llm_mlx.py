@@ -234,7 +234,7 @@ def compress_safetensors_file(
 
 def main():
     ap = argparse.ArgumentParser(description="Compress Hugging Face LLM checkpoints with MLX SVD.")
-    ap.add_argument("--hf", default="mlx-community/qwen3-4b-2507-mlx-4bit")
+    ap.add_argument("--hf", default="mlx-community/gemma-4-12B-mxfp8")
     ap.add_argument("--out", default="out/llm_mlx_compressed")
     ap.add_argument("--strategy", choices=["stable", "theorem"], default="stable")
     ap.add_argument("--compress", type=float, default=0.30, help="fraction removed; 0.30 keeps 70%% energy")

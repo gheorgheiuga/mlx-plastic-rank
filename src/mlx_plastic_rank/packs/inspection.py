@@ -15,14 +15,9 @@ MAX_HEAVY_PACK_BYTES = 512 * 1024 * 1024
 ALLOWED_RANKS = (2, 4, 8)
 HEAVY_ALLOWED_RANKS = (2, 4, 8, 16, 32, 64)
 
-_BASE_NAME_NORMALISATION = {
-    "qwen3-4b-thinking-2507-mlx-4bit": "qwen3-4b-2507-mlx-4bit",
-}
+_BASE_NAME_NORMALISATION: dict[str, str] = {}
 
 _BASE_SIZE_LIMITS = {
-    ("qwen3-4b-2507-mlx-4bit", 2): 4 * 1024 * 1024,
-    ("qwen3-4b-2507-mlx-4bit", 4): 6 * 1024 * 1024,
-    ("qwen3-4b-2507-mlx-4bit", 8): 12 * 1024 * 1024,
     ("llama-3-8b-instruct-mlx-4bit", 4): 9 * 1024 * 1024,
     ("llama-3-8b-instruct-mlx-4bit", 8): 18 * 1024 * 1024,
 }

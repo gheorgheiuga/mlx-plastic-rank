@@ -6,10 +6,6 @@ Track open and closed Decision Support Notes here for quick discovery. Link each
   - Summary: Aligns local dev, CI, and MLX compatibility; future upgrades require DSN + ADR update.
   - Link: `codex/dsn/dsn-20250912-python313.md`
 
-- **DSN-20250921-01** — Enable LoRA training for Qwen3-4B quantized checkpoints *(Accepted)*
-  - Summary: Patched geometry + LoRA wrapper to handle grouped projections, added eval batching, kept fp16 fallback.
-  - Link: `codex/dsn/dsn-20250921-lora-qwen3.md`
-
 - **DSN-20250922-02** — Maintain LoRA guardrails for rank and pack size *(Proposed)*
 
 - **DSN-20260608-01** — Target Gemma 4 12B mxfp8 for unified any-to-any packs *(Accepted; quality signal on fault-code pack, broader validation experimental)*
@@ -23,3 +19,11 @@ Track open and closed Decision Support Notes here for quick discovery. Link each
 - **DSN-20260609-02** — Implement dynamic Pop Rank with gated active ranks *(Accepted; mechanics verified, quality experimental)*
   - Summary: Makes `--rank` a training ceiling via active-rank gates, grows/shrinks adapters by learned rank signal, and exports only active columns.
   - Link: `codex/dsn/dsn-20260609-dynamic-pop-rank.md`
+
+- **DSN-20260609-03** — Test low-spectrum key-projection adaptation *(Accepted as local experimental direction; broader validation experimental)*
+  - Summary: Records the spectral-notch probe finding that trained Gemma fault-code `k_proj` adapters show elevated low-spectrum energy, and validates a same-budget spectral-key candidate that beats the current hetero map on held-out answer-token PPL/accuracy while matching generation overlap.
+  - Link: `codex/dsn/dsn-20260609-low-spectrum-key-adaptation.md`
+
+- **DSN-20260609-04** — Add artifact-backed domain pack proof reports *(Accepted as productization gate; broader validation experimental)*
+  - Summary: Adds `packs proof` to turn pack, eval, generation, and rank-ledger artifacts into a pass/fail DLC-style domain improvement report; local fault-code proof reports pass, including the full-split 2,700/300 Gemma 4 IT bakeoff where the learned hetero rank map is the best size/quality tradeoff.
+  - Link: `codex/dsn/dsn-20260609-domain-pack-proof.md`

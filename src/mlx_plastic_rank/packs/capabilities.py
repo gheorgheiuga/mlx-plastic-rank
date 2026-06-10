@@ -23,7 +23,7 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
         name="mlx-lm",
         package="mlx-lm",
         module="mlx_lm",
-        summary="Text-only MLX loader used for legacy Qwen/Llama pack training and eval.",
+        summary="Text-only MLX loader for local pack training and eval outside unified Gemma runtimes.",
         features=(
             "text model loading",
             "tokenized perplexity eval",
@@ -88,4 +88,3 @@ def missing_capabilities(rows: list[dict[str, Any]] | None = None) -> list[str]:
 
     report = rows if rows is not None else capability_report()
     return [str(row["name"]) for row in report if not row["installed"]]
-
