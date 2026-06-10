@@ -1,0 +1,81 @@
+{
+  "kind": "pack_bakeoff_spec",
+  "name": "fault_codes_gemma4_it_fullscale",
+  "domain": "industrial-fault-codes",
+  "base": "mlx-community/gemma-4-12B-it-qat-mxfp8",
+  "loader": "mlx-vlm",
+  "train_data": "data/fault_codes_train_full2700.jsonl",
+  "eval_data": "data/fault_codes_eval_full300.jsonl",
+  "output_dir": "out/fault_codes_gemma4_it_fullscale_bakeoff",
+  "layers": "attn.q_proj,attn.k_proj,attn.v_proj",
+  "profile": "heavy",
+  "metadata": {
+    "dataset": "avneetsingla/industrial-fault-codes-sample",
+    "dataset_license": "CC BY-NC 4.0",
+    "evidence_snapshot": "codex/evidence/fault_codes_full2700_fullscale_summary.json",
+    "evidence_status": "local quality-positive research result; broader validation experimental"
+  },
+  "train": {
+    "steps": 600,
+    "batch_size": 1,
+    "learning_rate": 5e-5,
+    "sequence_length": 256,
+    "seed": 42,
+    "loss_mode": "answer",
+    "chat_template": true,
+    "lora_dropout": 0.05
+  },
+  "eval": {
+    "num_samples": 300,
+    "batch_size": 4,
+    "sequence_length": 256,
+    "loss_mode": "answer",
+    "chat_template": true
+  },
+  "proof": {
+    "require_ledger": true,
+    "fail_on_regression": true,
+    "min_ppl_improvement_pct": 1.0,
+    "min_token_accuracy_gain": 0.0
+  },
+  "promotion_gates": {
+    "retain_fixed_r32_improvement": 0.9,
+    "max_fixed_r32_size_ratio": 0.6
+  },
+  "candidates": [
+    {
+      "id": "fixed_r16_600",
+      "pack": "fault-codes-gemma4-it-answer-r16-full2700-600",
+      "mode": "fixed_rank",
+      "rank": 16,
+      "small_reference": true
+    },
+    {
+      "id": "fixed_r32_600",
+      "pack": "fault-codes-gemma4-it-answer-r32-full2700-600",
+      "mode": "fixed_rank",
+      "rank": 32,
+      "quality_reference": true
+    },
+    {
+      "id": "dynamic_r32_init8_min4_150",
+      "pack": "fault-codes-gemma4-it-answer-dynamic-r32-init8-min4-full2700-150",
+      "mode": "dynamic_rank",
+      "rank": 32,
+      "steps": 150,
+      "dynamic_initial_rank": 8,
+      "dynamic_min_rank": 4,
+      "dynamic_rank_warmup": 50,
+      "dynamic_rank_interval": 25,
+      "dynamic_grow_threshold": 0.25,
+      "dynamic_prune_threshold": 0.03
+    },
+    {
+      "id": "hetero_r32_init8_min4_map_600",
+      "pack": "fault-codes-gemma4-it-answer-hetero-r32-init8-min4-full2700-map-600",
+      "mode": "rank_map_from_candidate",
+      "rank_map_from_candidate": "dynamic_r32_init8_min4_150",
+      "tradeoff_candidate": true
+    }
+  ]
+}

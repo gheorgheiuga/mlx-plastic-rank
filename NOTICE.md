@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Last checked: 2026-06-09.
+Last checked: 2026-06-10.
 
 `mlx-plastic-rank` is licensed under the MIT License in `LICENSE`. This notice
 covers external data and model resources referenced by repository docs,
@@ -29,6 +29,13 @@ artifact.
   published evaluations, cite: Bai et al. (2026), "IndustryBench: Probing the
   Industrial Knowledge Boundaries of LLMs", arXiv:2605.10267
   (https://arxiv.org/abs/2605.10267).
+
+- The Text-to-SQL replication spec references the Hugging Face dataset
+  `gretelai/synthetic_text_to_sql`
+  (https://huggingface.co/datasets/gretelai/synthetic_text_to_sql). At the
+  check date above, the upstream license tag is `apache-2.0`. Generated local
+  JSONL files from `scripts/text_to_sql_extract.py` should preserve the source
+  dataset, attribution, and license fields.
 
 ## Model Checkpoints
 

@@ -268,6 +268,23 @@ def test_proof_parser_accepts_artifact_inputs():
     assert args.fail_on_regression is True
 
 
+def test_bakeoff_parser_accepts_spec_dry_run_and_force():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "bakeoff",
+            "--spec",
+            "codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json",
+            "--dry-run",
+            "--force",
+        ]
+    )
+    assert args.command == "bakeoff"
+    assert args.spec == "codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json"
+    assert args.dry_run is True
+    assert args.force is True
+
+
 def test_create_parser_rejects_invalid_dropout():
     parser = build_parser()
     with pytest.raises(SystemExit):

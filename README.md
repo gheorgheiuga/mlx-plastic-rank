@@ -8,17 +8,18 @@ Static LoRA rank is normally treated as a fixed hyperparameter. Pop Rank explore
 This is still research. The repo now has working mechanics for dynamic active-rank gates, frozen heterogeneous continuation, fresh training from a discovered rank map, and a rank ledger for measuring effective rank, slack, and pack overlap. The current evidence is quality-positive on one local industrial-domain experiment; it is not proof of a general theorem.[^pop-theorem]
 
 ## Current Best Signal
-Fault-code maintenance pack experiment on `mlx-community/gemma-4-12B-it-qat-mxfp8`, evaluated with 300 answer-only held-out samples and 8 generation-check examples:[^fault-codes]
+Fault-code maintenance pack experiment on `mlx-community/gemma-4-12B-it-qat-mxfp8`, trained on 2,700 rows and evaluated on 300 answer-only held-out samples from `avneetsingla/industrial-fault-codes-sample`:[^fault-codes]
 
-| Model/pack | Size | Effective rank | Answer PPL | Token Acc. | Generation solution-overlap |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| base | 0 MB | - | 15.4316 | 0.6155 | 0.2723 |
-| fixed r16 / 600 steps | 27.10 MB | 2176 | 8.6158 | 0.6507 | 0.2924 |
-| dynamic two-phase 150+450 | 27.39 MB | 2288 | 6.2071 | 0.6734 | 0.3911 |
-| discovered map from scratch / 600 steps | 27.39 MB | 2288 | 5.7811 | 0.6773 | 0.3911 |
-| fixed r32 / 600 steps | 54.16 MB | 4352 | 5.6365 | 0.6802 | 0.4025 |
+| Model/pack | Size | Effective rank | Answer PPL | Token Acc. |
+| --- | ---: | ---: | ---: | ---: |
+| base | 0 MB | - | 15.4316 | 0.6155 |
+| fixed r16 / 600 steps | 27.10 MB | 2176 | 8.5677 | 0.6515 |
+| discovered map from scratch / 600 steps | 23.73 MB | 1984 | 5.9406 | 0.6748 |
+| fixed r32 / 600 steps | 54.16 MB | 4352 | 5.5622 | 0.6802 |
 
-The strongest signal is the discovered-map-from-scratch run: dynamic rank was used to discover a per-layer heterogeneous rank map, then fresh adapters were trained from that map. It nearly matches fixed `r32/600` while exporting roughly half the adapter bytes, and it strongly beats the same-size fixed `r16/600` baseline. Use `out/fault_codes_all4_plus_base_eval_300.{json,csv}` as the compact artifact for this comparison.
+The strongest signal is the discovered-map-from-scratch run: dynamic rank was used to discover a per-layer heterogeneous rank map, then fresh adapters were trained from that map. It retains most of the fixed `r32/600` held-out gain while exporting less than half the adapter bytes, and it beats fixed `r16/600` while also being smaller. The committed review snapshot is `codex/evidence/fault_codes_full2700_fullscale_summary.{json,csv}`; raw datasets, packs, logs, and full `out/` artifacts stay local and ignored.
+
+This is still one local domain result. The next validation step is the reproducible `packs bakeoff` workflow and the Apache-2.0 `gretelai/synthetic_text_to_sql` replication spec under `codex/bakeoffs/`.
 
 ## Why Plastic Rank?
 Traditional pruning and distillation discard parameters permanently. Plastic rank started as a reversible compression idea: slices are factored into low-rank adapters that can be re-activated when conditions warrant. The pack tooling extends that rank-control surface from compression into local domain adaptation.
@@ -59,6 +60,7 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 - Apply safely: `uv run packs apply --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
 - Evaluate: `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
 - Audit the DLC-style improvement claim: `uv run packs proof --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --domain my-domain --train-data data/domain_prompts.jsonl --eval-report results.json`
+- After extracting the referenced train/eval JSONL, run a reproducible train/eval/rank-ledger/proof bakeoff from a JSON spec: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json --dry-run`
 - For prompt/answer JSONL, add `--loss-mode answer` to train/evaluate only assistant answer tokens. This is the preferred mode for diagnostic or maintenance packs where the prompt is context, not a target to imitate.
 - Batch evaluation with VRAM/latency guardrails lives in `scripts/demo_plasticity_blocks.py`.
 - Compare base vs pack across domains: `uv run packs eval-batch --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip` (outputs PPL, TPS, first-token ms, VRAM, pack size).

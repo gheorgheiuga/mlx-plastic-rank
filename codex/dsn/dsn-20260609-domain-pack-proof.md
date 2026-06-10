@@ -80,7 +80,7 @@
 - This still does not prove a general Pop Rank theorem advantage. It proves that one local domain pack can be attached and improve one held-out industrial-domain evaluation.
 
 ## Follow-ups
-- [ ] Add a one-command `packs bakeoff` workflow that trains, evaluates, generates, ledgers, and proves strategies end-to-end.
+- [x] Add a one-command `packs bakeoff` workflow that trains, evaluates, ledgers, and proves strategies end-to-end. Generation checks remain domain-specific for now.
 - [ ] Add a compact Markdown or HTML renderer for proof reports.
 - [ ] Require metadata training provenance for release-grade packs after older local artifacts are regenerated.
 - [ ] Repeat proof reports on at least one additional dataset/base before making a broader product claim.

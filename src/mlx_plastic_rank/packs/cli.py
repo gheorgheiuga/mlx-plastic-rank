@@ -15,6 +15,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.nn.layers.quantized import QuantizedLinear
 
+from .bakeoff import BakeoffError, bakeoff_plan_payload, load_bakeoff_spec, run_bakeoff
 from .capabilities import capability_report, missing_capabilities
 from .dataset import build_supervised_token_dataset, build_token_dataset, load_jsonl_texts
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
@@ -805,6 +806,18 @@ def cmd_proof(args: argparse.Namespace) -> None:
         raise SystemExit("Domain pack proof failed.")
 
 
+def cmd_bakeoff(args: argparse.Namespace) -> None:
+    try:
+        spec = load_bakeoff_spec(Path(args.spec).expanduser())
+        if args.dry_run:
+            print(json.dumps(bakeoff_plan_payload(spec, force=args.force), indent=2))
+            return
+        summary = run_bakeoff(spec, force=args.force)
+    except BakeoffError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(json.dumps(summary, indent=2))
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     if not PACK_ROOT.exists():
         print("No packs found.")
@@ -1505,6 +1518,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit non-zero when the proof report status is failed",
     )
     proof.set_defaults(func=cmd_proof)
+
+    bakeoff = subparsers.add_parser(
+        "bakeoff",
+        help="Run a reproducible train/eval/rank-ledger/proof bakeoff from a JSON spec",
+    )
+    bakeoff.add_argument("--spec", required=True, help="Path to a pack bakeoff JSON spec")
+    bakeoff.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the planned subprocess phases without running training or evaluation",
+    )
+    bakeoff.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-run phases even when their output artifacts already exist",
+    )
+    bakeoff.set_defaults(func=cmd_bakeoff)
 
     list_cmd = subparsers.add_parser("list", help="List available packs")
     list_cmd.set_defaults(func=cmd_list)

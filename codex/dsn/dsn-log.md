@@ -27,3 +27,7 @@ Track open and closed Decision Support Notes here for quick discovery. Link each
 - **DSN-20260609-04** — Add artifact-backed domain pack proof reports *(Accepted as productization gate; broader validation experimental)*
   - Summary: Adds `packs proof` to turn pack, eval, generation, and rank-ledger artifacts into a pass/fail DLC-style domain improvement report; local fault-code proof reports pass, including the full-split 2,700/300 Gemma 4 IT bakeoff where the learned hetero rank map is the best size/quality tradeoff.
   - Link: `codex/dsn/dsn-20260609-domain-pack-proof.md`
+
+- **DSN-20260610-01** — Add reproducible pack bakeoff workflow *(Accepted as orchestration; replication evidence pending)*
+  - Summary: Adds `packs bakeoff` specs for train/eval/rank-ledger/proof runs, commits compact fault-code evidence snapshots, and selects Apache-2.0 Text-to-SQL data as the next large replication surface.
+  - Link: `codex/dsn/dsn-20260610-pack-bakeoff-workflow.md`

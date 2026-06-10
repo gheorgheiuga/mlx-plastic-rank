@@ -61,3 +61,11 @@
 - **Decision:** Add `packs proof` to audit artifact-backed domain improvement claims: pack exists, training/eval data exist, base and base+pack eval rows match, attach changes logits, held-out metrics improve, and optional generation/ledger gates pass.
 - **Evidence update:** A full-split Gemma 4 IT fault-code bakeoff on 2,700 train / 300 held-out rows shows the fixed r32 pack is the local quality ceiling (PPL 5.5622, token accuracy 0.6802, 54.16 MB), while the learned hetero rank-map pack is the best size/quality tradeoff (PPL 5.9406, token accuracy 0.6748, 23.73 MB) and passes `packs proof`.
 - **Consequences:** The repo can now prove the local industrial fault-code base+pack workflow from artifacts. Newly created packs record training provenance in metadata. This validates a product-style proof path for one domain and a local size/quality tradeoff result, not a universal Pop Rank quality claim.
+
+## ADR-0009 — Reproducible Pack Bakeoff Workflow
+- **Date:** 2026-06-10
+- **Status:** Accepted as orchestration workflow; replication evidence pending
+- **DSN:** `codex/dsn/dsn-20260610-pack-bakeoff-workflow.md`
+- **Context:** The proof path was useful but still required hand-running multiple commands and reading ignored local artifacts.
+- **Decision:** Add `packs bakeoff --spec` to orchestrate create/eval/rank-ledger/proof phases from JSON specs, commit compact evidence snapshots under `codex/evidence/`, and use Apache-2.0 `gretelai/synthetic_text_to_sql` as the next large replication dataset.
+- **Consequences:** The repo can now reproduce the fault-code comparison and launch a second-dataset bakeoff from reviewable specs. This accepts the workflow and evidence hygiene, not a broader Pop Rank theorem or cross-domain quality claim.

@@ -13,6 +13,9 @@ Before publishing or sharing generated data:
   unless commercial rights are resolved.
 - Treat `industrybench_en_*.jsonl` as MIT-licensed IndustryBench derived data
   and cite the upstream IndustryBench paper for published research.
+- Treat `text_to_sql_*.jsonl` as Apache-2.0 derived data from
+  `gretelai/synthetic_text_to_sql`; preserve the extractor's source and license
+  fields if publishing an artifact.
 
 Current local generators:
 
@@ -22,3 +25,5 @@ Current local generators:
   `fault_codes_eval_full300.jsonl` split used by the June 2026 bakeoff.
 - `scripts/industrybench_extract.py` -> `industrybench_en_train.jsonl`,
   `industrybench_en_eval.jsonl`
+- `scripts/text_to_sql_extract.py` -> `text_to_sql_train_10000.jsonl`,
+  `text_to_sql_eval_1000.jsonl`

@@ -29,6 +29,7 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
   - Apply safely: `uv run packs apply --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
   - Evaluate: `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
   - Prove a DLC-style domain improvement from artifacts: `uv run packs proof --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --domain my-domain --train-data data/domain_prompts.jsonl --eval-report results.json`
+  - Run a reproducible bakeoff spec: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json --dry-run`, then remove `--dry-run` for the long local run.
   - Prompt/answer data: add `--loss-mode answer` to train/evaluate only assistant answer tokens. Use this for maintenance, diagnostic, and support-style packs where prompts are conditioning context.
 - IndustryBench pilot:
   - Extract clean English Q/A text: `uv run python scripts/industrybench_extract.py --language en --source-limit 512 --train-size 128 --eval-size 32 --metadata-mode none --train-out data/industrybench_en_train.jsonl --eval-out data/industrybench_en_eval.jsonl`
@@ -52,7 +53,13 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
     | r32 / 100 steps | 54.16 MB | 12.8972 | -16.42% | 0.6259 | not run |
     | r32 / 300 steps | 54.16 MB | 8.5175 | -44.80% | 0.6513 | 0.3619 |
 
-  - Result: `fault-codes-gemma4-it-answer-r32-300` is the best current quality pack. `r16/300` is the best smaller pack by PPL-per-MB, but `r32/300` is the first pack that improves both full-token eval and generated solution-keyword overlap.
+  - Historical 300-step sweep result: `fault-codes-gemma4-it-answer-r32-300` was the best quality pack in that sweep. The newer full-split 600-step result is tracked in `codex/evidence/fault_codes_full2700_fullscale_summary.json`.
+- Text-to-SQL replication:
+  - Dataset: `gretelai/synthetic_text_to_sql` (Apache-2.0; large train/test splits with `sql_context`, `sql_prompt`, and `sql` fields).
+  - Extract: `uv run python scripts/text_to_sql_extract.py --train-size 10000 --eval-size 1000 --train-out data/text_to_sql_train_10000.jsonl --eval-out data/text_to_sql_eval_1000.jsonl`
+  - Dry-run full bakeoff: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json --dry-run`
+  - Full bakeoff: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json`
+  - Promotion gate: the hetero/rank-map candidate must pass proof, beat fixed r16 on held-out PPL or token accuracy, retain at least 90% of fixed r32 improvement over base, and use at most 60% of fixed r32 adapter bytes.
 - Pop-theorem rank ledger:
   - Inspect pack rank budget: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_ledger_r32_300.json --csv out/fault_codes_rank_ledger_r32_300.csv`
   - Compare pack overlap/composition: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r16-300 --compare fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_compare_r16_300_vs_r32_300.json --csv out/fault_codes_rank_compare_r16_300_vs_r32_300.csv`
