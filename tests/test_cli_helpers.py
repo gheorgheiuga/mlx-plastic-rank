@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from mlx_plastic_rank.packs.capabilities import capability_report, missing_capabilities
+from mlx_plastic_rank.packs.cli import _load_rank_map_json
 from mlx_plastic_rank.packs.eval_utils import (
     apply_thinking_strategy,
     load_domain_prompts,
@@ -53,6 +54,35 @@ def test_load_domain_prompts(tmp_path: Path):
     prompts = load_domain_prompts(path, "strip", None)
     assert set(prompts.keys()) == {"general", "domain"}
     assert prompts["domain"][0].strip() == "answer"
+
+
+def test_load_rank_map_json_defaults_alpha(tmp_path: Path):
+    path = tmp_path / "rank-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "rank_map": {
+                    "blocks.0.attn.q_proj": 4,
+                    "blocks.0.attn.k_proj": 8,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rank_map, alpha_map = _load_rank_map_json(str(path), (4, 8, 16))
+
+    assert rank_map["blocks.0.attn.q_proj"] == 4
+    assert alpha_map["blocks.0.attn.q_proj"] == 8.0
+    assert alpha_map["blocks.0.attn.k_proj"] == 16.0
+
+
+def test_load_rank_map_json_rejects_unsupported_rank(tmp_path: Path):
+    path = tmp_path / "rank-map.json"
+    path.write_text(json.dumps({"blocks.0.attn.q_proj": 3}), encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        _load_rank_map_json(str(path), (4, 8, 16))
 
 
 def test_extract_logits_accepts_output_containers():

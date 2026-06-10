@@ -4,7 +4,12 @@ import mlx.nn as nn
 
 from mlx_plastic_rank.packs import lora
 from mlx_plastic_rank.packs.inspection import size_limit_for, summarize_pack
-from mlx_plastic_rank.packs.io import PackMetadata, save_pack, save_pack_metadata
+from mlx_plastic_rank.packs.io import (
+    PackMetadata,
+    load_pack_metadata,
+    save_pack,
+    save_pack_metadata,
+)
 from mlx_plastic_rank.packs.manager import LoRAManager
 
 
@@ -56,17 +61,17 @@ def test_export_only_lora_keys(tmp_path, monkeypatch):
 
 
 def test_size_limit_for_known_bases():
-    meta_qwen = PackMetadata(
+    meta_gemma = PackMetadata(
         pack_name="demo",
         base_hash="hash",
-        base_model="/tmp/qwen3-4b-2507-mlx-4bit",
+        base_model="/tmp/gemma-4-12B-mxfp8",
         rank_map={"blocks.0.attn.q_proj": 4},
         alpha_map={"blocks.0.attn.q_proj": 8.0},
         target_layers=["blocks.0.attn.q_proj"],
         created_at="",
         notes="",
     )
-    assert size_limit_for(meta_qwen) == 6 * 1024 * 1024
+    assert size_limit_for(meta_gemma) == 10 * 1024 * 1024
 
     meta_llama = PackMetadata(
         pack_name="demo",
@@ -79,3 +84,24 @@ def test_size_limit_for_known_bases():
         notes="",
     )
     assert size_limit_for(meta_llama) == 18 * 1024 * 1024
+
+
+def test_pack_metadata_round_trips_training_provenance(tmp_path):
+    path = tmp_path / "meta.json"
+    metadata = PackMetadata(
+        pack_name="demo",
+        base_hash="hash",
+        base_model="dummy-base",
+        rank_map={"blocks.0.attn.q_proj": 4},
+        alpha_map={"blocks.0.attn.q_proj": 8.0},
+        target_layers=["blocks.0.attn.q_proj"],
+        training_data="data/train.jsonl",
+        training_config={"steps": 10, "loss_mode": "answer"},
+    )
+
+    save_pack_metadata(metadata, path)
+    loaded = load_pack_metadata(path)
+
+    assert loaded.training_data == "data/train.jsonl"
+    assert loaded.training_config["steps"] == 10
+    assert loaded.training_config["loss_mode"] == "answer"

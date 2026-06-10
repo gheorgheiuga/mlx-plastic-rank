@@ -21,12 +21,14 @@ from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_o
 from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize_pack
 from .io import compute_sha256, load_pack_metadata, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
+from .proof import DomainPackProofConfig, build_domain_pack_proof
 from .rank_ledger import (
     compare_pack_rank_ledgers,
     comparison_rows_for_csv,
     ledger_rows_for_csv,
     pack_rank_ledger,
 )
+from .rank_map import SpectralRankMapConfig, build_spectral_rank_map_candidate
 from .router import DomainPackRouter, load_domain_map
 from .train import TrainingConfig, model_logits, train_lora, train_lora_supervised
 
@@ -286,6 +288,49 @@ def _resolve_pack_dir(reference: str) -> Path:
     return _default_pack_dir(reference)
 
 
+def _load_rank_map_json(path: str, allowed_ranks: tuple[int, ...]) -> tuple[Dict[str, int], Dict[str, float]]:
+    source = Path(path).expanduser()
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SystemExit(f"Rank map JSON not found: {source}") from exc
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Rank map JSON is invalid: {source}: {exc}") from exc
+
+    rank_payload = payload.get("rank_map", payload) if isinstance(payload, dict) else None
+    alpha_payload = payload.get("alpha_map", {}) if isinstance(payload, dict) else {}
+    if not isinstance(rank_payload, dict) or not rank_payload:
+        raise SystemExit("Rank map JSON must be a non-empty object or contain a non-empty 'rank_map' object.")
+    if not isinstance(alpha_payload, dict):
+        raise SystemExit("Rank map JSON 'alpha_map' must be an object when provided.")
+
+    allowed = set(int(rank) for rank in allowed_ranks)
+    rank_map: Dict[str, int] = {}
+    alpha_map: Dict[str, float] = {}
+    for key, raw_rank in rank_payload.items():
+        try:
+            rank = int(raw_rank)
+        except (TypeError, ValueError) as exc:
+            raise SystemExit(f"Rank map entry {key!r} must be an integer rank.") from exc
+        if rank not in allowed:
+            raise SystemExit(
+                f"Rank map entry {key!r} uses unsupported rank {rank}; allowed ranks are {sorted(allowed)}."
+            )
+        rank_map[str(key)] = rank
+
+    for key, rank in rank_map.items():
+        raw_alpha = alpha_payload.get(key, 2.0 * rank)
+        try:
+            alpha = float(raw_alpha)
+        except (TypeError, ValueError) as exc:
+            raise SystemExit(f"Alpha map entry {key!r} must be numeric.") from exc
+        expected_alpha = 2.0 * rank
+        if alpha != 0.0 and not math.isclose(alpha, expected_alpha, rel_tol=1e-6, abs_tol=1e-6):
+            raise SystemExit(f"Alpha map entry {key!r} must be 0.0 or 2*rank ({expected_alpha}).")
+        alpha_map[key] = alpha
+    return rank_map, alpha_map
+
+
 def cmd_create(args: argparse.Namespace) -> None:
     base_ref = str(args.base)
     base_checkpoint = _resolve_base_checkpoint(base_ref)
@@ -300,12 +345,22 @@ def cmd_create(args: argparse.Namespace) -> None:
         raise SystemExit("--resume-pack continues existing weights; omit --zero-init.")
     if args.resume_pack and args.rank_map_from_pack:
         raise SystemExit("--resume-pack and --rank-map-from-pack are mutually exclusive.")
+    if args.resume_pack and args.rank_map_json:
+        raise SystemExit("--resume-pack and --rank-map-json are mutually exclusive.")
+    if args.rank_map_from_pack and args.rank_map_json:
+        raise SystemExit("--rank-map-from-pack and --rank-map-json are mutually exclusive.")
     if args.rank_map_from_pack and args.dynamic_rank:
         raise SystemExit("--rank-map-from-pack is a fixed-rank ablation path; omit --dynamic-rank.")
+    if args.rank_map_json and args.dynamic_rank:
+        raise SystemExit("--rank-map-json is a fixed-rank ablation path; omit --dynamic-rank.")
     if args.rank_map_from_pack and args.rank is not None:
         raise SystemExit("--rank-map-from-pack uses source metadata ranks; omit --rank.")
+    if args.rank_map_json and args.rank is not None:
+        raise SystemExit("--rank-map-json uses JSON metadata ranks; omit --rank.")
     if args.rank_map_from_pack and args.min_rank > 0:
         raise SystemExit("--rank-map-from-pack uses source metadata ranks; omit --min-rank.")
+    if args.rank_map_json and args.min_rank > 0:
+        raise SystemExit("--rank-map-json uses JSON metadata ranks; omit --min-rank.")
 
     print(f"Loading base model from {base_ref}...")
     model, tokenizer = _load_base_model(base_ref, args.loader)
@@ -362,6 +417,12 @@ def cmd_create(args: argparse.Namespace) -> None:
             print(
                 "Using fresh adapters from rank map "
                 f"{source_metadata.pack_name}: adapters={len(rank_map)} declared_rank={sum(rank_map.values())}"
+            )
+        elif args.rank_map_json:
+            rank_map, alpha_map = _load_rank_map_json(args.rank_map_json, allowed_ranks)
+            print(
+                "Using fresh adapters from rank map JSON "
+                f"{args.rank_map_json}: adapters={len(rank_map)} declared_rank={sum(rank_map.values())}"
             )
         elif args.rank is not None:
             if args.rank not in allowed_ranks:
@@ -436,6 +497,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         f"Training LoRA adapters: steps={config.steps} batch_size={config.batch_size} "
         f"lr={config.learning_rate} loss_mode={args.loss_mode}"
     )
+    training_samples = 0
     if args.loss_mode == "answer":
         tokens, masks = build_supervised_token_dataset(
             Path(args.data),
@@ -443,10 +505,12 @@ def cmd_create(args: argparse.Namespace) -> None:
             args.sequence_length,
             chat_template=args.chat_template,
         )
+        training_samples = int(tokens.shape[0])
         final_loss = train_lora_supervised(manager, model, tokens, masks, config)
     else:
         texts = load_jsonl_texts(Path(args.data), tokenizer, args.chat_template)
         dataset = build_token_dataset(texts, tokenizer, args.sequence_length)
+        training_samples = int(dataset.shape[0])
         final_loss = train_lora(manager, model, dataset, config)
     print(f"Training complete. Final loss={final_loss:.4f}")
 
@@ -456,6 +520,28 @@ def cmd_create(args: argparse.Namespace) -> None:
         notes=args.notes,
         profile=args.profile,
     )
+    metadata.training_data = str(Path(args.data))
+    metadata.training_config = {
+        "loss_mode": args.loss_mode,
+        "chat_template": bool(args.chat_template),
+        "steps": int(args.steps),
+        "batch_size": int(args.batch_size),
+        "learning_rate": float(args.learning_rate),
+        "sequence_length": int(args.sequence_length),
+        "seed": int(args.seed),
+        "profile": args.profile,
+        "layers": canonical_layers,
+        "rank": args.rank,
+        "rank_strategy": args.rank_strategy,
+        "rank_map_from_pack": args.rank_map_from_pack,
+        "rank_map_json": args.rank_map_json,
+        "resume_pack": args.resume_pack,
+        "dynamic_rank": bool(args.dynamic_rank),
+        "dynamic_initial_rank": int(args.dynamic_initial_rank),
+        "dynamic_min_rank": int(args.dynamic_min_rank),
+        "training_samples": training_samples,
+        "final_loss": float(final_loss),
+    }
     tensor_path = pack_dir / "pack.safetensors"
     meta_path = pack_dir / "meta.json"
     save_pack(tensors, tensor_path)
@@ -631,6 +717,92 @@ def cmd_rank_ledger(args: argparse.Namespace) -> None:
         csv_path = Path(args.csv)
         _write_csv_rows(csv_path, csv_rows)
         print(f"Rank ledger CSV written to {csv_path}")
+
+
+def cmd_rank_map_spectral(args: argparse.Namespace) -> None:
+    source_dir = _resolve_pack_dir(args.source_pack)
+    if not source_dir.exists():
+        raise SystemExit(f"Rank-map source pack '{args.source_pack}' not found at {source_dir}")
+    try:
+        source_metadata = load_pack_metadata(source_dir / "meta.json")
+    except FileNotFoundError as exc:
+        raise SystemExit(f"Rank-map source pack '{args.source_pack}' has no meta.json.") from exc
+
+    profile = args.profile or source_metadata.profile
+    try:
+        allowed_ranks = allowed_ranks_for(profile)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    spectral_paths: list[Path] = []
+    for value in [args.q_spectral, args.k_spectral, args.v_spectral]:
+        if value:
+            spectral_paths.append(Path(value).expanduser())
+    spectral_paths.extend(Path(value).expanduser() for value in args.spectral)
+    if not spectral_paths:
+        raise SystemExit("At least one spectral probe JSON is required.")
+    if args.budget_params is not None and args.budget_mb is not None:
+        raise SystemExit("Use only one budget: --budget-params or --budget-mb.")
+    budget_bytes = None
+    if args.budget_mb is not None:
+        budget_bytes = int(args.budget_mb * 1024 * 1024)
+
+    config = SpectralRankMapConfig(
+        allowed_ranks=allowed_ranks,
+        budget_params=args.budget_params,
+        budget_bytes=budget_bytes,
+        policy=args.policy,
+        promote_low_lift=args.promote_low_lift,
+        promote_rank=args.promote_rank,
+        demote_min_rank=args.demote_min_rank,
+    )
+    try:
+        report = build_spectral_rank_map_candidate(source_dir, spectral_paths, config)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    print(json.dumps(report, indent=2))
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"Spectral rank map written to {out_path}")
+
+
+def cmd_proof(args: argparse.Namespace) -> None:
+    pack_dir = _resolve_pack_dir(args.pack)
+    if not pack_dir.exists():
+        raise SystemExit(f"Pack '{args.pack}' not found at {pack_dir}")
+    config = DomainPackProofConfig(
+        base_model=args.base,
+        pack=args.pack,
+        domain=args.domain,
+        train_data=Path(args.train_data).expanduser(),
+        eval_data=Path(args.eval_data).expanduser() if args.eval_data else None,
+        pack_dir=pack_dir,
+        eval_report=Path(args.eval_report).expanduser(),
+        generation_report=Path(args.generation_report).expanduser() if args.generation_report else None,
+        ledger_report=Path(args.ledger_report).expanduser() if args.ledger_report else None,
+        min_ppl_improvement_pct=args.min_ppl_improvement_pct,
+        min_token_accuracy_gain=args.min_token_accuracy_gain,
+        min_generation_overlap_gain=args.min_generation_overlap_gain,
+        min_logit_diff=args.min_logit_diff,
+        require_generation=args.require_generation,
+        require_ledger=args.require_ledger,
+    )
+    try:
+        report = build_domain_pack_proof(config)
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+
+    print(json.dumps(report, indent=2))
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"Domain pack proof written to {out_path}")
+    if args.fail_on_regression and report["status"] != "passed":
+        raise SystemExit("Domain pack proof failed.")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -1054,7 +1226,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8)",
     )
     create.add_argument("--layers", default="attn.q_proj,attn.k_proj,attn.v_proj")
     create.add_argument(
@@ -1110,6 +1282,10 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument(
         "--rank-map-from-pack",
         help="Initialise fresh adapters using the heterogeneous rank map from an existing pack.",
+    )
+    create.add_argument(
+        "--rank-map-json",
+        help="Initialise fresh adapters using a JSON object of target or adapter-specific ranks.",
     )
     create.add_argument(
         "--min-rank",
@@ -1180,7 +1356,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8)",
     )
     apply.add_argument(
         "--loader",
@@ -1219,6 +1395,117 @@ def build_parser() -> argparse.ArgumentParser:
     rank_ledger.add_argument("--csv", help="Write adapter/pair rows to this CSV path")
     rank_ledger.set_defaults(func=cmd_rank_ledger)
 
+    rank_map = subparsers.add_parser(
+        "rank-map",
+        help="Generate rank-map JSON candidates from probe artifacts",
+    )
+    rank_map_subparsers = rank_map.add_subparsers(dest="rank_map_command", required=True)
+    rank_map_spectral = rank_map_subparsers.add_parser(
+        "spectral",
+        help="Generate a spectral-key-biased rank-map JSON candidate",
+    )
+    rank_map_spectral.add_argument(
+        "--source-pack",
+        required=True,
+        help="Pack name under packs/ or a direct pack directory containing meta.json and pack.safetensors",
+    )
+    rank_map_spectral.add_argument(
+        "--spectral",
+        action="append",
+        default=[],
+        help="Spectral probe JSON path; repeat for q/k/v outputs, or use the target-specific options",
+    )
+    rank_map_spectral.add_argument("--q-spectral", help="q_proj spectral probe JSON path")
+    rank_map_spectral.add_argument("--k-spectral", help="k_proj spectral probe JSON path")
+    rank_map_spectral.add_argument("--v-spectral", help="v_proj spectral probe JSON path")
+    rank_map_spectral.add_argument("--out", help="Write rank-map JSON candidate to this path")
+    rank_map_spectral.add_argument(
+        "--profile",
+        choices=["lite", "heavy"],
+        help="Allowed rank profile; defaults to the source pack profile",
+    )
+    rank_map_spectral.add_argument(
+        "--policy",
+        choices=["balanced", "all-key"],
+        default="balanced",
+        help="Promotion scope: balanced promotes full-attention key adapters; all-key considers every key adapter",
+    )
+    rank_map_spectral.add_argument(
+        "--budget-params",
+        type=int,
+        help="Maximum estimated LoRA parameter budget; defaults to the source pack estimate",
+    )
+    rank_map_spectral.add_argument(
+        "--budget-mb",
+        type=float,
+        help="Maximum estimated fp16 LoRA storage budget in MiB",
+    )
+    rank_map_spectral.add_argument(
+        "--promote-low-lift",
+        type=float,
+        default=1.4,
+        help="Minimum low_8_lift needed before an adapter is promoted",
+    )
+    rank_map_spectral.add_argument(
+        "--promote-rank",
+        type=int,
+        default=32,
+        help="Target rank for promoted adapters, snapped down to the allowed rank ladder",
+    )
+    rank_map_spectral.add_argument(
+        "--demote-min-rank",
+        type=int,
+        default=4,
+        help="Lowest rank allowed for compensation demotions, snapped down to the allowed rank ladder",
+    )
+    rank_map_spectral.set_defaults(func=cmd_rank_map_spectral)
+
+    proof = subparsers.add_parser(
+        "proof",
+        help="Audit whether a DLC-style pack improves a held-out domain over its base model",
+    )
+    proof.add_argument("--base", required=True, help="Base model reference used by the eval report")
+    proof.add_argument("--pack", required=True, help="Pack name under packs/ or direct pack directory")
+    proof.add_argument("--domain", required=True, help="Human-readable domain label for the proof report")
+    proof.add_argument("--train-data", required=True, help="Training JSONL used to create the pack")
+    proof.add_argument("--eval-data", help="Held-out evaluation JSONL used by the eval report")
+    proof.add_argument("--eval-report", required=True, help="JSON report from `packs eval`")
+    proof.add_argument("--generation-report", help="Optional JSON report from a generation check")
+    proof.add_argument("--ledger-report", help="Optional JSON report from `packs rank-ledger`")
+    proof.add_argument("--out", help="Write proof report JSON to this path")
+    proof.add_argument(
+        "--min-ppl-improvement-pct",
+        type=float,
+        default=1.0,
+        help="Minimum held-out perplexity improvement percentage required to pass",
+    )
+    proof.add_argument(
+        "--min-token-accuracy-gain",
+        type=float,
+        default=0.0,
+        help="Minimum token-accuracy gain required to pass",
+    )
+    proof.add_argument(
+        "--min-generation-overlap-gain",
+        type=float,
+        default=0.0,
+        help="Minimum generation solution-keyword overlap gain required when a generation report is provided",
+    )
+    proof.add_argument(
+        "--min-logit-diff",
+        type=float,
+        default=0.0,
+        help="Minimum max-logit difference required to prove the attached pack changed the model",
+    )
+    proof.add_argument("--require-generation", action="store_true")
+    proof.add_argument("--require-ledger", action="store_true")
+    proof.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Exit non-zero when the proof report status is failed",
+    )
+    proof.set_defaults(func=cmd_proof)
+
     list_cmd = subparsers.add_parser("list", help="List available packs")
     list_cmd.set_defaults(func=cmd_list)
 
@@ -1242,7 +1529,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_cmd.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8)",
     )
     eval_cmd.add_argument(
         "--loader",
@@ -1277,7 +1564,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_batch.add_argument(
         "--base",
         required=True,
-        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8, qwen3-4b-2507-mlx-4bit)",
+        help="Base model path or ID (e.g. mlx-community/gemma-4-12B-mxfp8)",
     )
     eval_batch.add_argument(
         "--loader",

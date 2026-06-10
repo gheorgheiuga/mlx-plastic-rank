@@ -23,6 +23,8 @@ class PackMetadata:
     rank_map: Dict[str, int] = field(default_factory=dict)
     alpha_map: Dict[str, float] = field(default_factory=dict)
     target_layers: List[str] = field(default_factory=list)
+    training_data: str | None = None
+    training_config: Dict[str, object] = field(default_factory=dict)
     created_at: str = ""
     notes: str = ""
     version: str = PACK_VERSION
@@ -34,6 +36,7 @@ class PackMetadata:
         rank_data = data.get("rank_map") or {}
         alpha_data = data.get("alpha_map") or {}
         target_data = data.get("target_layers") or []
+        training_config_data = data.get("training_config") or {}
         if isinstance(rank_data, dict):
             rank_map = {str(k): int(v) for k, v in rank_data.items()}
         else:
@@ -46,6 +49,9 @@ class PackMetadata:
             targets = [str(v) for v in target_data]
         else:
             targets = []
+        training_data_val = data.get("training_data")
+        training_data = str(training_data_val) if training_data_val not in (None, "") else None
+        training_config = training_config_data if isinstance(training_config_data, dict) else {}
         return cls(
             pack_name=str(data.get("pack_name", "")),
             base_hash=str(data.get("base_hash", "")),
@@ -54,6 +60,8 @@ class PackMetadata:
             rank_map=rank_map,
             alpha_map=alpha_map,
             target_layers=targets,
+            training_data=training_data,
+            training_config=training_config,
             created_at=str(data.get("created_at", "")),
             notes=str(data.get("notes", "")),
             version=str(data.get("version", PACK_VERSION)),
@@ -68,6 +76,8 @@ class PackMetadata:
             "rank_map": self.rank_map,
             "alpha_map": self.alpha_map,
             "target_layers": self.target_layers,
+            "training_data": self.training_data,
+            "training_config": self.training_config,
             "created_at": self.created_at,
             "notes": self.notes,
             "version": self.version,

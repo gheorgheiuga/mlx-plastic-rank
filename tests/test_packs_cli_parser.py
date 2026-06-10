@@ -11,7 +11,7 @@ def test_create_parser_accepts_rank_strategy():
             "--name",
             "demo",
             "--base",
-            "qwen3-4b-2507-mlx-4bit",
+            "mlx-community/gemma-4-12B-mxfp8",
             "--data",
             "data/domain_prompts.jsonl",
             "--rank-strategy",
@@ -127,6 +127,24 @@ def test_create_parser_accepts_rank_map_from_pack():
     assert args.rank_map_from_pack == "phase-one"
 
 
+def test_create_parser_accepts_rank_map_json():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "create",
+            "--name",
+            "spectral-map",
+            "--base",
+            "mlx-community/gemma-4-12B-it-qat-mxfp8",
+            "--data",
+            "data/fault_codes_train.jsonl",
+            "--rank-map-json",
+            "out/spectral_key_rank_map.json",
+        ]
+    )
+    assert args.rank_map_json == "out/spectral_key_rank_map.json"
+
+
 def test_eval_parser_accepts_chat_template():
     parser = build_parser()
     args = parser.parse_args(
@@ -182,6 +200,74 @@ def test_rank_ledger_parser_accepts_compare_and_outputs():
     assert args.csv == "out/ledger.csv"
 
 
+def test_rank_map_spectral_parser_accepts_probe_inputs():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "rank-map",
+            "spectral",
+            "--source-pack",
+            "hetero-source",
+            "--q-spectral",
+            "out/q.json",
+            "--k-spectral",
+            "out/k.json",
+            "--v-spectral",
+            "out/v.json",
+            "--profile",
+            "heavy",
+            "--policy",
+            "balanced",
+            "--out",
+            "out/rank-map.json",
+        ]
+    )
+    assert args.command == "rank-map"
+    assert args.rank_map_command == "spectral"
+    assert args.source_pack == "hetero-source"
+    assert args.q_spectral == "out/q.json"
+    assert args.k_spectral == "out/k.json"
+    assert args.v_spectral == "out/v.json"
+    assert args.profile == "heavy"
+    assert args.out == "out/rank-map.json"
+
+
+def test_proof_parser_accepts_artifact_inputs():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "proof",
+            "--base",
+            "mlx-community/gemma-4-12B-it-qat-mxfp8",
+            "--pack",
+            "domain-pack",
+            "--domain",
+            "fault-codes",
+            "--train-data",
+            "data/train.jsonl",
+            "--eval-data",
+            "data/eval.jsonl",
+            "--eval-report",
+            "out/eval.json",
+            "--generation-report",
+            "out/generation.json",
+            "--ledger-report",
+            "out/ledger.json",
+            "--require-generation",
+            "--require-ledger",
+            "--fail-on-regression",
+            "--out",
+            "out/proof.json",
+        ]
+    )
+    assert args.command == "proof"
+    assert args.pack == "domain-pack"
+    assert args.domain == "fault-codes"
+    assert args.require_generation is True
+    assert args.require_ledger is True
+    assert args.fail_on_regression is True
+
+
 def test_create_parser_rejects_invalid_dropout():
     parser = build_parser()
     with pytest.raises(SystemExit):
@@ -191,7 +277,7 @@ def test_create_parser_rejects_invalid_dropout():
                 "--name",
                 "demo",
                 "--base",
-                "qwen3-4b-2507-mlx-4bit",
+                "mlx-community/gemma-4-12B-mxfp8",
                 "--data",
                 "data/domain_prompts.jsonl",
                 "--lora-dropout",
@@ -208,7 +294,7 @@ def test_create_parser_accepts_heavy_profile():
             "--name",
             "demo",
             "--base",
-            "qwen3-4b-2507-mlx-4bit",
+            "mlx-community/gemma-4-12B-mxfp8",
             "--data",
             "data/domain_prompts.jsonl",
             "--profile",
@@ -226,7 +312,7 @@ def test_create_parser_accepts_min_rank():
             "--name",
             "demo",
             "--base",
-            "qwen3-4b-2507-mlx-4bit",
+            "mlx-community/gemma-4-12B-mxfp8",
             "--data",
             "data/domain_prompts.jsonl",
             "--min-rank",
@@ -301,7 +387,7 @@ def test_create_parser_rejects_zero_explicit_rank():
                 "--name",
                 "demo",
                 "--base",
-                "qwen3-4b-2507-mlx-4bit",
+                "mlx-community/gemma-4-12B-mxfp8",
                 "--data",
                 "data/domain_prompts.jsonl",
                 "--rank",
@@ -320,7 +406,7 @@ def test_route_parser_accepts_required_args(tmp_path):
         [
             "route",
             "--base",
-            "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+            "mlx-community/gemma-4-12B-mxfp8",
             "--domain-map",
             str(mapping),
             "--input",

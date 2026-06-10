@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -23,12 +25,39 @@ def clean_text(value: Any) -> str:
     return str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
-def dataset_viewer_get(endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
+def dataset_viewer_get(endpoint: str, params: dict[str, Any], *, retries: int = 3) -> dict[str, Any]:
     query = urllib.parse.urlencode(params)
     url = f"{DATASET_SERVER}/{endpoint}?{query}"
     request = urllib.request.Request(url, headers={"User-Agent": "mlx-plastic-rank/fault-codes"})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.loads(response.read().decode("utf-8"))
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {429, 500, 502, 503, 504} or attempt == retries - 1:
+                raise
+            time.sleep(2.0 * (attempt + 1))
+    raise RuntimeError("unreachable")
+
+
+def fetch_rows_from_datasets(
+    dataset: str,
+    config: str,
+    split: str,
+    *,
+    source_limit: int | None,
+) -> list[dict[str, Any]]:
+    from datasets import load_dataset
+
+    loaded = load_dataset(dataset, config, split=split)
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(loaded):
+        copied = dict(row)
+        copied["_row_idx"] = index
+        rows.append(copied)
+        if source_limit is not None and len(rows) >= source_limit:
+            break
+    return rows
 
 
 def fetch_rows(
@@ -189,6 +218,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset", default=DATASET_ID)
     parser.add_argument("--config", default="default")
     parser.add_argument("--split", default="train")
+    parser.add_argument(
+        "--backend",
+        choices=["datasets", "viewer"],
+        default="datasets",
+        help="Use the local Hugging Face datasets loader or Dataset Viewer row pagination.",
+    )
     parser.add_argument("--source-limit", type=int)
     parser.add_argument("--train-size", type=int, default=2400)
     parser.add_argument("--eval-size", type=int, default=300)
@@ -202,12 +237,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    rows = fetch_rows(
-        args.dataset,
-        args.config,
-        args.split,
-        source_limit=args.source_limit,
-    )
+    if args.backend == "viewer":
+        rows = fetch_rows(
+            args.dataset,
+            args.config,
+            args.split,
+            source_limit=args.source_limit,
+        )
+    else:
+        rows = fetch_rows_from_datasets(
+            args.dataset,
+            args.config,
+            args.split,
+            source_limit=args.source_limit,
+        )
     examples = build_examples(rows, args.dataset)
     train_rows, eval_rows = split_examples(
         examples,
@@ -218,6 +261,7 @@ def main() -> None:
     )
     summary = {
         "dataset": args.dataset,
+        "backend": args.backend,
         **dataset_notice(args.dataset),
         "source_rows": len(rows),
         "examples": len(examples),
