@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-import numpy as np
-
 from .io import PackMetadata, load_pack, load_pack_metadata
 
 MAX_PACK_BYTES = 10 * 1024 * 1024
@@ -63,6 +61,13 @@ def allowed_ranks_for(profile: str | None) -> tuple[int, ...]:
     raise ValueError(f"Unsupported pack profile '{profile}'")
 
 
+def _shape_params(shape: tuple[int, ...]) -> int:
+    total = 1
+    for dim in shape:
+        total *= int(dim)
+    return total
+
+
 def summarize_pack(pack_dir: Path) -> tuple[PackMetadata, List[TensorInfo], int, int, List[str]]:
     tensor_path = pack_dir / "pack.safetensors"
     meta_path = pack_dir / "meta.json"
@@ -79,12 +84,13 @@ def summarize_pack(pack_dir: Path) -> tuple[PackMetadata, List[TensorInfo], int,
     for key, arr in tensors.items():
         if ".lora." not in key:
             non_lora.append(key)
-        params = int(np.prod(arr.shape))
+        shape = tuple(int(v) for v in arr.shape)
+        params = _shape_params(shape)
         bytes_ = arr.nbytes
         infos.append(
             TensorInfo(
                 key=key,
-                shape=tuple(int(v) for v in arr.shape),
+                shape=shape,
                 dtype=str(arr.dtype),
                 params=params,
                 bytes=bytes_,

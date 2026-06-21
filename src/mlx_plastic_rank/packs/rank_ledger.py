@@ -1,4 +1,4 @@
-"""Rank-algebra ledger for LoRA packs.
+"""Rank-algebra ledger for LoRA packs using MLX tensor operations.
 
 The ledger treats each LoRA adapter as a low-rank linear operator and records
 how much rank is actually active, wasted, shared, or newly introduced. This is
@@ -8,105 +8,138 @@ need before making that stronger claim.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+import mlx.core as mx
 
 from .io import load_pack, load_pack_metadata
 
+CPU_DEVICE = mx.Device(mx.cpu)
 
-def _relative_rank(singular_values: np.ndarray, rank_tol: float) -> int:
-    if singular_values.size == 0:
+
+def _numel(value: Any) -> int:
+    total = 1
+    for dim in getattr(value, "shape", ()):
+        total *= int(dim)
+    return int(total)
+
+
+def _to_mx_f32(value: Any) -> mx.array:
+    return mx.array(value, dtype=mx.float32)
+
+
+def _empty_matrix(rows: int, cols: int) -> mx.array:
+    return mx.zeros((int(rows), int(cols)), dtype=mx.float32)
+
+
+def _relative_rank(singular_values: mx.array, rank_tol: float) -> int:
+    if int(singular_values.shape[0]) == 0:
         return 0
-    top = float(singular_values[0])
+    top = float(singular_values[0].item())
     if top <= 0.0:
         return 0
     threshold = max(float(rank_tol), 0.0) * top
-    return int(np.sum(singular_values > threshold))
+    return int(mx.sum((singular_values > threshold).astype(mx.int32)).item())
 
 
-def _stable_rank_from_singulars(singular_values: np.ndarray) -> float:
-    if singular_values.size == 0:
+def _stable_rank_from_singulars(singular_values: mx.array) -> float:
+    if int(singular_values.shape[0]) == 0:
         return 0.0
-    top = float(singular_values[0])
+    top = float(singular_values[0].item())
     if top <= 0.0:
         return 0.0
-    fro2 = float(np.sum(np.square(singular_values)))
+    fro2 = float(mx.sum(singular_values * singular_values).item())
     return fro2 / (top * top)
 
 
-def _lowrank_singular_values(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+def _lowrank_singular_values(left: mx.array, right: mx.array) -> mx.array:
     """Return non-zero singular values of ``left @ right`` using a small core."""
 
-    if left.ndim != 2 or right.ndim != 2:
+    if len(left.shape) != 2 or len(right.shape) != 2:
         raise ValueError("Low-rank factors must be rank-2 arrays")
     if left.shape[1] != right.shape[0]:
         raise ValueError(
             f"Low-rank factor mismatch: left columns {left.shape[1]} != right rows {right.shape[0]}"
         )
-    if left.size == 0 or right.size == 0:
-        return np.array([], dtype=np.float32)
+    if _numel(left) == 0 or _numel(right) == 0:
+        return mx.zeros((0,), dtype=mx.float32)
 
-    _, r_left = np.linalg.qr(left, mode="reduced")
-    _, r_right_t = np.linalg.qr(right.T, mode="reduced")
-    core = r_left @ r_right_t.T
-    return np.linalg.svd(core, compute_uv=False).astype(np.float32, copy=False)
+    _, r_left = mx.linalg.qr(left, stream=CPU_DEVICE)
+    _, r_right_t = mx.linalg.qr(mx.transpose(right), stream=CPU_DEVICE)
+    core = mx.matmul(r_left, mx.transpose(r_right_t))
+    _, singulars, _ = mx.linalg.svd(core, stream=CPU_DEVICE)
+    return singulars.astype(mx.float32)
 
 
-def _factor_rank(left: np.ndarray, right: np.ndarray, rank_tol: float) -> tuple[int, np.ndarray]:
+def _factor_rank(left: mx.array, right: mx.array, rank_tol: float) -> tuple[int, mx.array]:
     singulars = _lowrank_singular_values(left, right)
     return _relative_rank(singulars, rank_tol), singulars
 
 
-def _basis(matrix: np.ndarray, rank_tol: float) -> np.ndarray:
-    if matrix.size == 0:
-        return np.zeros((matrix.shape[0], 0), dtype=np.float32)
-    u, s, _ = np.linalg.svd(matrix, full_matrices=False)
-    rank = _relative_rank(s, rank_tol)
-    return u[:, :rank].astype(np.float32, copy=False)
+def _basis(matrix: mx.array, rank_tol: float) -> mx.array:
+    if _numel(matrix) == 0:
+        return _empty_matrix(int(matrix.shape[0]), 0)
+    u, singulars, _ = mx.linalg.svd(matrix, stream=CPU_DEVICE)
+    rank = _relative_rank(singulars, rank_tol)
+    return u[:, :rank].astype(mx.float32)
 
 
-def _column_basis(left: np.ndarray, right: np.ndarray, rank_tol: float) -> np.ndarray:
-    if right.size == 0:
-        return np.zeros((left.shape[0], 0), dtype=np.float32)
-    u_right, s_right, _ = np.linalg.svd(right, full_matrices=False)
-    rank = _relative_rank(s_right, rank_tol)
+def _column_basis(left: mx.array, right: mx.array, rank_tol: float) -> mx.array:
+    if _numel(right) == 0:
+        return _empty_matrix(int(left.shape[0]), 0)
+    u_right, singulars, _ = mx.linalg.svd(right, stream=CPU_DEVICE)
+    rank = _relative_rank(singulars, rank_tol)
     if rank == 0:
-        return np.zeros((left.shape[0], 0), dtype=np.float32)
-    return _basis(left @ u_right[:, :rank], rank_tol)
+        return _empty_matrix(int(left.shape[0]), 0)
+    return _basis(mx.matmul(left, u_right[:, :rank]), rank_tol)
 
 
-def _row_basis(left: np.ndarray, right: np.ndarray, rank_tol: float) -> np.ndarray:
-    if left.size == 0:
-        return np.zeros((right.shape[1], 0), dtype=np.float32)
-    _, s_left, vh_left = np.linalg.svd(left, full_matrices=False)
-    rank = _relative_rank(s_left, rank_tol)
+def _row_basis(left: mx.array, right: mx.array, rank_tol: float) -> mx.array:
+    if _numel(left) == 0:
+        return _empty_matrix(int(right.shape[1]), 0)
+    _, singulars, vh_left = mx.linalg.svd(left, stream=CPU_DEVICE)
+    rank = _relative_rank(singulars, rank_tol)
     if rank == 0:
-        return np.zeros((right.shape[1], 0), dtype=np.float32)
-    row_samples = vh_left[:rank, :] @ right
-    return _basis(row_samples.T, rank_tol)
+        return _empty_matrix(int(right.shape[1]), 0)
+    row_samples = mx.matmul(vh_left[:rank, :], right)
+    return _basis(mx.transpose(row_samples), rank_tol)
 
 
-def _union_rank(left_basis: np.ndarray, right_basis: np.ndarray, rank_tol: float) -> int:
-    if left_basis.shape[1] == 0:
+def _union_rank(left_basis: mx.array, right_basis: mx.array, rank_tol: float) -> int:
+    if int(left_basis.shape[1]) == 0:
         return int(right_basis.shape[1])
-    if right_basis.shape[1] == 0:
+    if int(right_basis.shape[1]) == 0:
         return int(left_basis.shape[1])
-    singulars = np.linalg.svd(
-        np.concatenate([left_basis, right_basis], axis=1),
-        compute_uv=False,
+    _, singulars, _ = mx.linalg.svd(
+        mx.concatenate([left_basis, right_basis], axis=1),
+        stream=CPU_DEVICE,
     )
     return _relative_rank(singulars, rank_tol)
 
 
 def _fro_inner(
-    left_a: np.ndarray,
-    left_b: np.ndarray,
-    right_a: np.ndarray,
-    right_b: np.ndarray,
+    left_a: mx.array,
+    left_b: mx.array,
+    right_a: mx.array,
+    right_b: mx.array,
 ) -> float:
-    return float(np.trace((left_a.T @ right_a) @ (right_b @ left_b.T)))
+    left_inner = mx.matmul(mx.transpose(left_a), right_a)
+    right_inner = mx.matmul(right_b, mx.transpose(left_b))
+    product = mx.matmul(left_inner, right_inner)
+    return float(mx.sum(mx.diag(product)).item())
+
+
+def _fro_from_singulars(singulars: mx.array) -> float:
+    if int(singulars.shape[0]) == 0:
+        return 0.0
+    return float(mx.sqrt(mx.sum(singulars * singulars)).item())
+
+
+def _leading_values(values: mx.array, limit: int = 8) -> list[float]:
+    count = min(int(limit), int(values.shape[0]))
+    return [float(values[index].item()) for index in range(count)]
 
 
 def _target_from_key(key: str) -> str:
@@ -114,8 +147,8 @@ def _target_from_key(key: str) -> str:
     return parts[2] if len(parts) == 3 else key
 
 
-def _group_lora_tensors(tensors: dict[str, np.ndarray]) -> dict[str, dict[str, np.ndarray]]:
-    grouped: dict[str, dict[str, np.ndarray]] = {}
+def _group_lora_tensors(tensors: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
     for key, value in tensors.items():
         if ".lora." not in key:
             continue
@@ -124,23 +157,28 @@ def _group_lora_tensors(tensors: dict[str, np.ndarray]) -> dict[str, dict[str, n
     return grouped
 
 
+def _scalar_alpha(value: Any) -> float:
+    alpha = mx.array(value, dtype=mx.float32)
+    return float(mx.reshape(alpha, ()).item())
+
+
 def _scaled_factors(
     key: str,
-    tensors: dict[str, np.ndarray],
+    tensors: dict[str, Any],
     rank_map: dict[str, int],
     alpha_map: dict[str, float],
-) -> tuple[np.ndarray, np.ndarray, float, int]:
+) -> tuple[mx.array, mx.array, float, int]:
     if "A" not in tensors or "B" not in tensors or "alpha" not in tensors:
         missing = sorted({"A", "B", "alpha"} - set(tensors))
         raise ValueError(f"Missing LoRA tensor(s) for {key}: {missing}")
-    left = np.asarray(tensors["A"], dtype=np.float32)
-    right = np.asarray(tensors["B"], dtype=np.float32)
+    left = _to_mx_f32(tensors["A"])
+    right = _to_mx_f32(tensors["B"])
     fallback_rank = int(left.shape[1] if left.shape[1] is not None else 0)
     declared_rank = int(rank_map[key]) if key in rank_map else fallback_rank
-    alpha = float(alpha_map.get(key, np.asarray(tensors["alpha"]).reshape(()).item()))
+    alpha = float(alpha_map.get(key, _scalar_alpha(tensors["alpha"])))
     if declared_rank <= 0:
         raise ValueError(f"Invalid declared rank for {key}: {declared_rank}")
-    if left.ndim != 2 or right.ndim != 2:
+    if len(left.shape) != 2 or len(right.shape) != 2:
         raise ValueError(f"LoRA tensors for {key} must be matrices")
     if left.shape[1] != right.shape[0]:
         raise ValueError(
@@ -152,11 +190,11 @@ def _scaled_factors(
 
 def _load_update_factors(
     pack_dir: Path,
-) -> tuple[dict[str, Any], dict[str, tuple[np.ndarray, np.ndarray, float, int, int]]]:
+) -> tuple[dict[str, Any], dict[str, tuple[mx.array, mx.array, float, int, int]]]:
     metadata = load_pack_metadata(pack_dir / "meta.json")
     tensors = load_pack(pack_dir / "pack.safetensors")
     grouped = _group_lora_tensors(tensors)
-    updates: dict[str, tuple[np.ndarray, np.ndarray, float, int, int]] = {}
+    updates: dict[str, tuple[mx.array, mx.array, float, int, int]] = {}
     for key in sorted(grouped):
         left, right, alpha, declared_rank = _scaled_factors(
             key,
@@ -164,7 +202,7 @@ def _load_update_factors(
             metadata.rank_map,
             metadata.alpha_map,
         )
-        tensor_bytes = sum(int(np.asarray(value).nbytes) for value in grouped[key].values())
+        tensor_bytes = sum(int(getattr(value, "nbytes", 0)) for value in grouped[key].values())
         updates[key] = (left, right, alpha, declared_rank, tensor_bytes)
     return metadata.to_dict(), updates
 
@@ -182,11 +220,11 @@ def pack_rank_ledger(pack_dir: Path, rank_tol: float = 1e-5) -> dict[str, Any]:
 
     for key, (left, right, alpha, declared_rank, tensor_bytes) in updates.items():
         effective_rank, singulars = _factor_rank(left, right, rank_tol)
-        fro_norm = float(np.sqrt(np.sum(np.square(singulars)))) if singulars.size else 0.0
-        spectral_norm = float(singulars[0]) if singulars.size else 0.0
+        fro_norm = _fro_from_singulars(singulars)
+        spectral_norm = float(singulars[0].item()) if int(singulars.shape[0]) else 0.0
         stable_rank = _stable_rank_from_singulars(singulars)
         target = _target_from_key(key)
-        params = int(left.size + right.size)
+        params = int(_numel(left) + _numel(right))
         row = {
             "adapter": key,
             "target": target,
@@ -202,7 +240,7 @@ def pack_rank_ledger(pack_dir: Path, rank_tol: float = 1e-5) -> dict[str, Any]:
             "fro_norm": fro_norm,
             "spectral_norm": spectral_norm,
             "stable_rank": stable_rank,
-            "singular_values": [float(value) for value in singulars[: min(8, singulars.size)]],
+            "singular_values": _leading_values(singulars),
         }
         adapters.append(row)
         total_declared_rank += declared_rank
@@ -229,7 +267,7 @@ def pack_rank_ledger(pack_dir: Path, rank_tol: float = 1e-5) -> dict[str, Any]:
         target_row["rank_slack"] += max(0, declared_rank - effective_rank)
         target_row["params"] += params
         target_row["bytes"] += tensor_bytes
-        target_row["fro_norm"] = float(np.sqrt(float(target_row["fro_norm"]) ** 2 + fro_norm * fro_norm))
+        target_row["fro_norm"] = math.sqrt(float(target_row["fro_norm"]) ** 2 + fro_norm * fro_norm)
 
     summary: dict[str, Any] = {
         "adapter_count": len(adapters),
@@ -240,7 +278,7 @@ def pack_rank_ledger(pack_dir: Path, rank_tol: float = 1e-5) -> dict[str, Any]:
             total_effective_rank / float(total_declared_rank) if total_declared_rank else 0.0
         ),
         "bytes": total_bytes,
-        "fro_norm": float(np.sqrt(total_fro2)),
+        "fro_norm": math.sqrt(total_fro2),
         "bytes_per_effective_rank": total_bytes / float(max(total_effective_rank, 1)),
     }
 
@@ -287,8 +325,8 @@ def compare_pack_rank_ledgers(
         left_rank, left_singulars = _factor_rank(left_a, left_b, rank_tol)
         right_rank, right_singulars = _factor_rank(right_a, right_b, rank_tol)
         sum_rank, sum_singulars = _factor_rank(
-            np.concatenate([left_a, right_a], axis=1),
-            np.concatenate([left_b, right_b], axis=0),
+            mx.concatenate([left_a, right_a], axis=1),
+            mx.concatenate([left_b, right_b], axis=0),
             rank_tol,
         )
 
@@ -302,8 +340,8 @@ def compare_pack_rank_ledgers(
         row_union = _union_rank(left_row, right_row, rank_tol)
         row_overlap = max(0, left_rank + right_rank - row_union)
 
-        left_fro = float(np.sqrt(np.sum(np.square(left_singulars)))) if left_singulars.size else 0.0
-        right_fro = float(np.sqrt(np.sum(np.square(right_singulars)))) if right_singulars.size else 0.0
+        left_fro = _fro_from_singulars(left_singulars)
+        right_fro = _fro_from_singulars(right_singulars)
         inner = _fro_inner(left_a, left_b, right_a, right_b)
         cosine = inner / max(left_fro * right_fro, 1e-12)
         rank_savings = max(0, left_rank + right_rank - sum_rank)
@@ -324,9 +362,7 @@ def compare_pack_rank_ledgers(
             "row_union_rank": row_union,
             "row_overlap_rank": row_overlap,
             "fro_cosine": float(max(-1.0, min(1.0, cosine))),
-            "composition_singular_values": [
-                float(value) for value in sum_singulars[: min(8, sum_singulars.size)]
-            ],
+            "composition_singular_values": _leading_values(sum_singulars),
         }
         pairs.append(row)
         summary["left_effective_rank"] += left_rank

@@ -1,75 +1,81 @@
-"""Rank selection heuristics and stability metrics.
+"""Rank selection heuristics and stability metrics using MLX tensors."""
 
-This module purposely uses NumPy for singular-value computations so rank
-selection never triggers large MLX/Metal allocations. The actual low‑rank
-reconstruction during compression can still use MLX.
-"""
-from typing import Tuple, Union
+from __future__ import annotations
 
-import mlx.core as mx  # for type annotations only
-import numpy as np
+from typing import Any, Tuple
 
-ArrayLike = Union[np.ndarray, mx.array]
+import mlx.core as mx
 
-def _to_numpy_f32(A: ArrayLike) -> np.ndarray:
-    if isinstance(A, np.ndarray):
-        return A.astype(np.float32, copy=False)
-    # Fall back to array protocol
-    return np.array(A, dtype=np.float32)
+ArrayLike = Any
+CPU_DEVICE = mx.Device(mx.cpu)
+
+
+def _to_mx_f32(value: ArrayLike) -> mx.array:
+    return mx.array(value, dtype=mx.float32)
+
+
+def _fro_norm(value: mx.array) -> float:
+    return float(mx.sqrt(mx.sum(value * value)).item())
+
+
+def _singular_energy_values(singulars: mx.array) -> list[float]:
+    return [
+        float((singulars[index] * singulars[index]).item())
+        for index in range(int(singulars.shape[0]))
+    ]
+
+
+def _first_energy_rank(singulars: mx.array, target_compression: float, full_rank: int) -> int:
+    energies = _singular_energy_values(singulars)
+    total = sum(energies)
+    if total <= 0.0:
+        return 1
+    running = 0.0
+    threshold = float(target_compression)
+    for index, energy in enumerate(energies):
+        running += energy
+        if running / (total + 1e-12) >= threshold:
+            return max(1, min(index + 1, full_rank))
+    return max(1, full_rank)
 
 
 def stable_rank(A: ArrayLike, eps: float = 1e-6) -> float:
-    """Compute the stable rank of a matrix A.
+    """Compute the stable rank of a matrix with MLX SVD."""
 
-    stable_rank(A) = ||A||_F^2 / (sigma_max(A)^2 + eps)
-
-    - Uses NumPy SVD without computing U/V for efficiency.
-    - Adds a small `eps` to guard degenerate cases.
-    """
-    A_np = _to_numpy_f32(A)
-    s = np.linalg.svd(A_np, compute_uv=False)
-    fro2 = float(np.square(A_np).sum())
-    denom = float(s[0] * s[0] + eps)
-    return float(fro2 / denom)
+    data = _to_mx_f32(A)
+    if len(data.shape) != 2:
+        raise ValueError("stable_rank expects a 2D matrix")
+    _, singulars, _ = mx.linalg.svd(data, stream=CPU_DEVICE)
+    if int(singulars.shape[0]) == 0:
+        return 0.0
+    top = float(singulars[0].item())
+    if top <= 0.0:
+        return 0.0
+    fro2 = float(mx.sum(data * data).item())
+    return float(fro2 / (top * top + float(eps)))
 
 
 def theorem_guided_rank(
-    A: ArrayLike, target_compression: float = 0.9, eps: float = 1e-6, tol: float = 1.0
+    A: ArrayLike,
+    target_compression: float = 0.9,
+    eps: float = 1e-6,
+    tol: float = 1.0,
 ) -> Tuple[int, float]:
-    """Select a rank guided by spectral energy and reconstruction residual.
+    """Select a rank from MLX spectral energy and reconstruction residual."""
 
-    Procedure
-    - Compute SVD once and pick r0 as the smallest rank whose cumulative
-      spectral energy reaches ``target_compression``.
-    - Reconstruct ``A_r`` and compute a relative Frobenius residual:
-      ``res = ||A - A_r||_F / (||A||_F + eps)``.
-    - If ``res > tol``, increment ``r`` until residual is within tolerance or
-      full rank is reached.
-
-    Returns ``(r, residual)`` where ``residual`` is the final relative error.
-    """
-    A_np = _to_numpy_f32(A)
-    if A_np.ndim != 2 or A_np.shape[0] != A_np.shape[1]:
+    data = _to_mx_f32(A)
+    if len(data.shape) != 2 or data.shape[0] != data.shape[1]:
         raise ValueError("theorem_guided_rank expects a square 2D matrix")
 
-    U, S, Vh = np.linalg.svd(A_np, full_matrices=False)
-    s2 = S * S
-    total = float(s2.sum())
-    cdf = np.cumsum(s2) / (total + 1e-12) if total != 0 else np.array([], dtype=np.float32)
-    if cdf.size == 0:
-        r = 1
-    else:
-        cvals = cdf.tolist()
-        r0 = next((i + 1 for i, v in enumerate(cvals) if v >= float(target_compression)), min(A_np.shape))
-        r = max(1, min(int(r0), min(A_np.shape)))
+    U, singulars, Vh = mx.linalg.svd(data, stream=CPU_DEVICE)
+    full = min(int(data.shape[0]), int(data.shape[1]))
+    r = _first_energy_rank(singulars, target_compression, full)
 
-    full = min(A_np.shape)
+    denominator = _fro_norm(data) + float(eps)
     residual = float("inf")
     while r <= full:
-        A_r = (U[:, :r] * S[:r][None, :]) @ Vh[:r, :]
-        num = float(np.linalg.norm(A_np - A_r, ord="fro"))
-        den = float(np.linalg.norm(A_np, ord="fro")) + float(eps)
-        residual = num / den
+        approx = mx.matmul(U[:, :r] * singulars[:r], Vh[:r, :])
+        residual = _fro_norm(data - approx) / denominator
         if residual <= tol:
             break
         r += 1
@@ -78,16 +84,11 @@ def theorem_guided_rank(
 
 
 def _energy_rank(A: ArrayLike, target_compression: float) -> int:
-    A_np = _to_numpy_f32(A)
-    s = np.linalg.svd(A_np, compute_uv=False)
-    s2 = s * s
-    total = float(s2.sum())
-    if total == 0:
-        return 1
-    cdf = np.cumsum(s2) / (total + 1e-12)
-    vals = cdf.tolist()
-    r0 = next((i + 1 for i, v in enumerate(vals) if v >= float(target_compression)), min(A_np.shape))
-    return max(1, min(int(r0), min(A_np.shape)))
+    data = _to_mx_f32(A)
+    if len(data.shape) != 2:
+        raise ValueError("_energy_rank expects a 2D matrix")
+    _, singulars, _ = mx.linalg.svd(data, stream=CPU_DEVICE)
+    return _first_energy_rank(singulars, target_compression, min(int(data.shape[0]), int(data.shape[1])))
 
 
 def choose_rank(
@@ -96,16 +97,11 @@ def choose_rank(
     strategy: str,
     eps: float = 1e-6,
 ) -> Tuple[int, float]:
-    """Choose a rank according to a strategy.
+    """Choose a rank according to the named strategy."""
 
-    Returns a tuple `(r, residual)`.
-    - For `strategy="stable"`, `r` is chosen by energy cutoff and `residual` is `-1.0` as a sentinel.
-    - For `strategy="theorem"`, `r` and `residual` come from `theorem_guided_rank`.
-    """
     if strategy == "stable":
         r = _energy_rank(A, target_compression)
         return r, -1.0
-    elif strategy == "theorem":
+    if strategy == "theorem":
         return theorem_guided_rank(A, target_compression, eps)
-    else:
-        raise ValueError(f"Unknown strategy: {strategy}")
+    raise ValueError(f"Unknown strategy: {strategy}")

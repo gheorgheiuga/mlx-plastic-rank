@@ -8,7 +8,6 @@ from typing import Dict, Iterable, List, Tuple
 
 import mlx.core as mx
 import mlx.nn as nn
-import numpy as np
 
 
 @dataclass
@@ -41,15 +40,22 @@ class SliceLoRA:
     def active_rank(self) -> int:
         if self.gates is None:
             return self.rank
-        gates = np.array(self.gates)
-        return int(np.sum(gates > 0.5))
+        active = mx.sum((self.gates > 0.5).astype(mx.int32))
+        return int(active.item())
 
     def set_active_rank(self, active_rank: int) -> None:
         if active_rank <= 0 or active_rank > self.rank:
             raise ValueError(f"Active rank must be in [1, {self.rank}], got {active_rank}")
-        values = np.zeros((self.rank,), dtype=np.float32)
-        values[:active_rank] = 1.0
-        self.gates = mx.array(values, dtype=mx.float32)
+        if active_rank == self.rank:
+            self.gates = mx.ones((self.rank,), dtype=mx.float32)
+            return
+        self.gates = mx.concatenate(
+            [
+                mx.ones((active_rank,), dtype=mx.float32),
+                mx.zeros((self.rank - active_rank,), dtype=mx.float32),
+            ],
+            axis=0,
+        )
 
     def export_arrays(self) -> Tuple[mx.array, mx.array, float, int]:
         export_rank = self.active_rank

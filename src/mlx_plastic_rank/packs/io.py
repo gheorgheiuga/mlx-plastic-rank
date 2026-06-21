@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
+# safetensors.numpy requires NumPy arrays at the pack file boundary.
 import numpy as np
 from safetensors.numpy import load_file, save_file
 

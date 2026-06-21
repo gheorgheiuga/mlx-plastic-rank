@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 import mlx.core as mx
+
+# NumPy is kept here only for safetensors.numpy serialization/deserialization.
 import numpy as np
 
 from ..rank_select import choose_rank
@@ -510,13 +512,13 @@ class LoRAManager:
             linear = _get_nested_attr(block0, spec.wrapper_attr)
             weight = _linear_weight_array(linear)
             mx.eval(weight)
-            slice_weight = weight[spec.start : spec.end, :]
-            matrix = np.array(slice_weight, dtype=np.float32)
-            if matrix.size == 0:
+            slice_weight = weight[spec.start : spec.end, :].astype(mx.float32)
+            if int(slice_weight.shape[0]) == 0 or int(slice_weight.shape[1]) == 0:
                 raise PackApplicationError(f"Unable to compute rank for empty slice '{target}'")
-            mat_for_rank = matrix
+            mat_for_rank = slice_weight
             if strategy == "theorem":
-                mat_for_rank = matrix @ matrix.T
+                mat_for_rank = mx.matmul(slice_weight, mx.transpose(slice_weight))
+            mx.eval(mat_for_rank)
             rank, residual = choose_rank(mat_for_rank, target_compression, strategy=strategy, eps=eps)
             if rank <= 0:
                 rank = allowed[0]
@@ -673,14 +675,14 @@ class LoRAManager:
         active_rank = adapter.active_rank
         if active_rank <= 0:
             return 0.0
-        A = np.array(adapter.A[:, :active_rank], dtype=np.float32)
-        B = np.array(adapter.B[:active_rank, :], dtype=np.float32)
-        if A.size == 0 or B.size == 0:
+        A = adapter.A[:, :active_rank].astype(mx.float32)
+        B = adapter.B[:active_rank, :].astype(mx.float32)
+        if int(A.shape[0]) == 0 or int(A.shape[1]) == 0 or int(B.shape[0]) == 0 or int(B.shape[1]) == 0:
             return 0.0
-        column_norms = np.linalg.norm(A, axis=0)
-        row_norms = np.linalg.norm(B, axis=1)
+        column_norms = mx.sqrt(mx.sum(A * A, axis=0))
+        row_norms = mx.sqrt(mx.sum(B * B, axis=1))
         utilities = column_norms * row_norms
-        return float(np.sum(utilities))
+        return float(mx.sum(utilities).item())
 
     @staticmethod
     def _active_rank_choices(

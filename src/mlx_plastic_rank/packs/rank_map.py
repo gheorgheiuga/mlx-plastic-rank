@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from .io import load_pack, load_pack_metadata
 
 
@@ -42,8 +40,15 @@ def _target_from_key(key: str) -> str:
     return parts[2] if len(parts) == 3 else key
 
 
-def _group_lora_tensors(tensors: dict[str, np.ndarray]) -> dict[str, dict[str, np.ndarray]]:
-    grouped: dict[str, dict[str, np.ndarray]] = {}
+def _matrix_shape(value: Any, *, key: str) -> tuple[int, int]:
+    shape = getattr(value, "shape", None)
+    if shape is None or len(shape) != 2:
+        raise ValueError(f"LoRA tensor {key} must be a matrix")
+    return int(shape[0]), int(shape[1])
+
+
+def _group_lora_tensors(tensors: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
     for key, value in tensors.items():
         if ".lora." not in key:
             continue
@@ -62,19 +67,17 @@ def load_adapter_shapes(pack_dir: Path) -> dict[str, AdapterShape]:
         if "A" not in parts or "B" not in parts:
             missing = sorted({"A", "B"} - set(parts))
             raise ValueError(f"Missing LoRA tensor(s) for {adapter}: {missing}")
-        left = np.asarray(parts["A"])
-        right = np.asarray(parts["B"])
-        if left.ndim != 2 or right.ndim != 2:
-            raise ValueError(f"LoRA tensors for {adapter} must be matrices")
-        if left.shape[1] != right.shape[0]:
+        left_rows, left_cols = _matrix_shape(parts["A"], key=f"{adapter}.lora.A")
+        right_rows, right_cols = _matrix_shape(parts["B"], key=f"{adapter}.lora.B")
+        if left_cols != right_rows:
             raise ValueError(
-                f"LoRA rank mismatch for {adapter}: A rank {left.shape[1]} != B rank {right.shape[0]}"
+                f"LoRA rank mismatch for {adapter}: A rank {left_cols} != B rank {right_rows}"
             )
         shapes[adapter] = AdapterShape(
             adapter=adapter,
             target=_target_from_key(adapter),
-            out_dim=int(left.shape[0]),
-            in_dim=int(right.shape[1]),
+            out_dim=left_rows,
+            in_dim=right_cols,
         )
     return shapes
 

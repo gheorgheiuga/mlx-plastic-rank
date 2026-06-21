@@ -1,9 +1,13 @@
-"""Matrix-polynomial rank probes for Pop Rank research.
+"""Offline matrix-polynomial rank probes for Pop Rank research.
 
 This module verifies Pop's matrix-polynomial rank identity on a chosen
 operator, then optionally checks whether LoRA adapter subspaces overlap with
 the polynomial image spaces. Those overlap numbers are diagnostics, not proof
 that adapter quality follows from the theorem.
+
+This is a non-runtime legacy diagnostic. TODO(poprank-mlx): migrate the
+polynomial/eigenspace algebra to MLX before using this path as a core spectral
+probe for training, evaluation, ablation, or runtime memory reports.
 """
 
 from __future__ import annotations

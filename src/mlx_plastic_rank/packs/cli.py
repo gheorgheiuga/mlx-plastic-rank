@@ -9,20 +9,55 @@ import math
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping
 
 import mlx.core as mx
 import mlx.nn as nn
 from mlx.nn.layers.quantized import QuantizedLinear
 
+from .ablation import (
+    AblationError,
+    ablation_report_markdown,
+    ablation_rows_for_csv,
+    build_rank_channel_ablation_report,
+)
 from .bakeoff import BakeoffError, bakeoff_plan_payload, load_bakeoff_spec, run_bakeoff
 from .capabilities import capability_report, missing_capabilities
 from .dataset import build_supervised_token_dataset, build_token_dataset, load_jsonl_texts
+from .device_profiles import (
+    DeviceProfileError,
+    build_memory_ledger,
+    device_profiles_markdown,
+    device_profiles_report,
+    gb_to_bytes,
+    load_rank_budget_bytes,
+    memory_ledger_markdown,
+    memory_ledger_rows_for_csv,
+    memory_observations_from_report,
+    pack_memory_inputs,
+    parse_profile_names,
+)
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
 from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize_pack
 from .io import compute_sha256, load_pack_metadata, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
 from .proof import DomainPackProofConfig, build_domain_pack_proof
+from .rank_budget import (
+    RankBudgetError,
+    adapter_shapes_from_pack,
+    budget_report_markdown,
+    consumable_rank_map_payload,
+    fixed_rank_map,
+    normalization_report_markdown,
+    normalize_rank_map_to_target,
+    random_same_budget_rank_map,
+    rank_control_report_markdown,
+    rank_map_budget_report,
+    shuffled_discovered_rank_map,
+)
+from .rank_budget import (
+    load_rank_map_json as load_budget_rank_map_json,
+)
 from .rank_ledger import (
     compare_pack_rank_ledgers,
     comparison_rows_for_csv,
@@ -690,6 +725,419 @@ def _write_csv_rows(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
+
+
+def _write_json_artifact(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _write_markdown_artifact(path: Path, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+
+def _write_rank_map_artifact(path: Path, rank_map: Mapping[str, int], alpha_map: Mapping[str, float]) -> None:
+    _write_json_artifact(path, consumable_rank_map_payload(rank_map, alpha_map))
+
+
+def _memory_bytes_from_args(byte_value: int | None, gb_value: float | None, label: str) -> int | None:
+    if byte_value is not None and gb_value is not None:
+        raise SystemExit(f"Use only one of --{label}-bytes or --{label}-gb.")
+    if byte_value is not None:
+        if byte_value < 0:
+            raise SystemExit(f"--{label}-bytes must be >= 0.")
+        return int(byte_value)
+    if gb_value is not None:
+        if gb_value < 0:
+            raise SystemExit(f"--{label}-gb must be >= 0.")
+        return gb_to_bytes(gb_value)
+    return None
+
+
+def _manual_memory_observation(peak_gb: float, index: int) -> dict[str, object]:
+    if peak_gb < 0:
+        raise SystemExit("--observed-peak-gb values must be >= 0.")
+    return {
+        "source": "manual",
+        "kind": "manual",
+        "metric": "observed_peak_gb",
+        "peak_memory_gb": float(peak_gb),
+        "peak_memory_bytes": gb_to_bytes(float(peak_gb)),
+        "details": {"index": index},
+    }
+
+
+def _memory_pack_info(pack: str | None) -> tuple[dict[str, object] | None, str | None]:
+    if not pack:
+        return None, None
+    pack_dir = _resolve_pack_dir(pack)
+    if not pack_dir.exists():
+        raise SystemExit(f"Memory-ledger pack '{pack}' not found at {pack_dir}")
+    try:
+        info = pack_memory_inputs(pack_dir)
+    except (FileNotFoundError, DeviceProfileError) as exc:
+        raise SystemExit(str(exc)) from exc
+    metadata = info.get("metadata")
+    pack_name = pack
+    if isinstance(metadata, Mapping):
+        pack_name = str(metadata.get("pack_name") or pack)
+    return info, pack_name
+
+
+def _memory_observations(args: argparse.Namespace, pack_name: str | None) -> list[dict[str, object]]:
+    observations: list[dict[str, object]] = []
+    try:
+        for path in getattr(args, "eval_report", []) or []:
+            observations.extend(
+                memory_observations_from_report(
+                    Path(path).expanduser(),
+                    report_kind="eval",
+                    pack=pack_name,
+                )
+            )
+        for path in getattr(args, "eval_batch_report", []) or []:
+            observations.extend(
+                memory_observations_from_report(
+                    Path(path).expanduser(),
+                    report_kind="eval_batch",
+                    pack=pack_name,
+                )
+            )
+        for path in getattr(args, "generation_report", []) or []:
+            observations.extend(
+                memory_observations_from_report(
+                    Path(path).expanduser(),
+                    report_kind="generation",
+                    pack=pack_name,
+                )
+            )
+    except DeviceProfileError as exc:
+        raise SystemExit(str(exc)) from exc
+    for index, peak_gb in enumerate(getattr(args, "observed_peak_gb", []) or []):
+        observations.append(_manual_memory_observation(float(peak_gb), index))
+    return observations
+
+
+def _rank_budget_memory_sources(args: argparse.Namespace) -> tuple[int | None, list[dict[str, object]]]:
+    sources: list[dict[str, object]] = []
+    adapter_bytes = None
+    try:
+        for path_value in getattr(args, "rank_budget_report", []) or []:
+            path = Path(path_value).expanduser()
+            budget_bytes, summary = load_rank_budget_bytes(path)
+            if budget_bytes is None:
+                raise DeviceProfileError(f"Rank-budget report has no usable byte summary: {path}")
+            sources.append(
+                {
+                    "source": str(path),
+                    "adapter_tensor_bytes": budget_bytes,
+                    "summary": summary or {},
+                }
+            )
+            adapter_bytes = max(adapter_bytes or 0, int(budget_bytes))
+    except DeviceProfileError as exc:
+        raise SystemExit(str(exc)) from exc
+    return adapter_bytes, sources
+
+
+def _parse_optional_csv(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _parse_optional_int_csv(raw: str | None, *, label: str) -> list[int]:
+    values = []
+    for part in _parse_optional_csv(raw):
+        try:
+            values.append(int(part))
+        except ValueError as exc:
+            raise SystemExit(f"{label} must be a comma-separated integer list.") from exc
+    return values
+
+
+def _parse_ablation_eval_reports(values: list[str] | None) -> dict[str, Path]:
+    reports: dict[str, Path] = {}
+    for raw in values or []:
+        if "=" not in raw:
+            raise SystemExit("--ablation-eval must use the form ABLATION_ID=path/to/eval.json")
+        ablation_id, path = raw.split("=", 1)
+        ablation_id = ablation_id.strip()
+        if not ablation_id:
+            raise SystemExit("--ablation-eval requires a non-empty ablation ID.")
+        reports[ablation_id] = Path(path).expanduser()
+    return reports
+
+
+def cmd_ablation_report(args: argparse.Namespace) -> None:
+    pack_dir = _resolve_pack_dir(args.pack)
+    if not pack_dir.exists():
+        raise SystemExit(f"Ablation source pack '{args.pack}' not found at {pack_dir}")
+    try:
+        report = build_rank_channel_ablation_report(
+            pack_dir,
+            unit=args.unit,
+            top_k=args.top_k,
+            prefix_rank=args.prefix_rank,
+            targets=_parse_optional_csv(args.targets),
+            layers=_parse_optional_int_csv(args.layers, label="--layers"),
+            ablation_pack_root=Path(args.ablation_pack_root) if args.ablation_pack_root else None,
+            baseline_eval=Path(args.baseline_eval).expanduser() if args.baseline_eval else None,
+            ablation_eval_reports=_parse_ablation_eval_reports(args.ablation_eval),
+        )
+    except (AblationError, FileNotFoundError) as exc:
+        raise SystemExit(str(exc)) from exc
+    if args.out:
+        _write_json_artifact(Path(args.out), report)
+        print(f"Ablation report JSON written to {args.out}")
+    else:
+        print(json.dumps(report, indent=2))
+    if args.markdown:
+        _write_markdown_artifact(Path(args.markdown), ablation_report_markdown(report))
+        print(f"Ablation report Markdown written to {args.markdown}")
+    if args.csv:
+        _write_csv_rows(Path(args.csv), ablation_rows_for_csv(report))
+        print(f"Ablation report CSV written to {args.csv}")
+
+
+def cmd_device_profiles(args: argparse.Namespace) -> None:
+    try:
+        names = parse_profile_names(args.profiles)
+        report = device_profiles_report(names)
+    except DeviceProfileError as exc:
+        raise SystemExit(str(exc)) from exc
+    if args.out:
+        _write_json_artifact(Path(args.out), report)
+        print(f"Device profile JSON written to {args.out}")
+    else:
+        print(json.dumps(report, indent=2))
+    if args.markdown:
+        _write_markdown_artifact(Path(args.markdown), device_profiles_markdown(report))
+        print(f"Device profile Markdown written to {args.markdown}")
+
+
+def cmd_memory_ledger(args: argparse.Namespace) -> None:
+    pack_info, pack_name = _memory_pack_info(args.pack)
+    budget_adapter_bytes, rank_budget_sources = _rank_budget_memory_sources(args)
+    explicit_adapter_bytes = _memory_bytes_from_args(args.adapter_bytes, args.adapter_gb, "adapter")
+    adapter_bytes = explicit_adapter_bytes if explicit_adapter_bytes is not None else budget_adapter_bytes
+    base_model_bytes = _memory_bytes_from_args(args.base_model_bytes, args.base_model_gb, "base-model")
+    host_rss_peak_bytes = (
+        gb_to_bytes(args.host_rss_peak_gb) if args.host_rss_peak_gb is not None else None
+    )
+    extra_overhead_bytes = gb_to_bytes(args.extra_overhead_gb)
+    observations = _memory_observations(args, pack_name)
+    try:
+        report = build_memory_ledger(
+            profiles=parse_profile_names(args.profiles),
+            name=args.name or pack_name,
+            pack_info=pack_info,
+            adapter_tensor_bytes=adapter_bytes,
+            base_model_bytes=base_model_bytes,
+            extra_overhead_bytes=extra_overhead_bytes,
+            host_rss_peak_bytes=host_rss_peak_bytes,
+            observations=observations,
+            rank_budget_sources=rank_budget_sources,
+        )
+    except DeviceProfileError as exc:
+        raise SystemExit(str(exc)) from exc
+    if args.out:
+        _write_json_artifact(Path(args.out), report)
+        print(f"Memory ledger JSON written to {args.out}")
+    else:
+        print(json.dumps(report, indent=2))
+    if args.markdown:
+        _write_markdown_artifact(Path(args.markdown), memory_ledger_markdown(report))
+        print(f"Memory ledger Markdown written to {args.markdown}")
+    if args.csv:
+        _write_csv_rows(Path(args.csv), memory_ledger_rows_for_csv(report))
+        print(f"Memory ledger CSV written to {args.csv}")
+
+
+def _rank_budget_source(args: argparse.Namespace):
+    source_dir = _resolve_pack_dir(args.source_pack)
+    if not source_dir.exists():
+        raise SystemExit(f"Rank-budget source pack '{args.source_pack}' not found at {source_dir}")
+    try:
+        metadata = load_pack_metadata(source_dir / "meta.json")
+        shapes = adapter_shapes_from_pack(source_dir)
+    except (FileNotFoundError, RankBudgetError) as exc:
+        raise SystemExit(str(exc)) from exc
+    profile = args.profile or metadata.profile
+    return source_dir, metadata, shapes, profile
+
+
+def _rank_budget_input_map(
+    args: argparse.Namespace,
+    metadata,
+    shapes,
+    profile: str,
+) -> tuple[Dict[str, int], Dict[str, float], str]:
+    fixed_rank = getattr(args, "fixed_rank", None)
+    rank_map_json = getattr(args, "rank_map_json", None)
+    if fixed_rank is not None and rank_map_json:
+        raise SystemExit("Use only one rank-map input: --fixed-rank or --rank-map-json.")
+    if fixed_rank is not None:
+        rank_map = fixed_rank_map(shapes, int(fixed_rank), profile=profile)
+        return rank_map, {key: 2.0 * rank for key, rank in rank_map.items()}, f"fixed_r{fixed_rank}"
+    if rank_map_json:
+        try:
+            raw_rank_map, raw_alpha_map = load_budget_rank_map_json(Path(rank_map_json).expanduser())
+            report = rank_map_budget_report(raw_rank_map, shapes, profile=profile, alpha_map=raw_alpha_map)
+        except RankBudgetError as exc:
+            raise SystemExit(str(exc)) from exc
+        return dict(report["rank_map"]), dict(report["alpha_map"]), str(rank_map_json)
+    return dict(metadata.rank_map), dict(metadata.alpha_map), metadata.pack_name
+
+
+def _load_target_rank_map_for_budget(args: argparse.Namespace) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    if getattr(args, "target_pack", None) and getattr(args, "target_rank_map_json", None):
+        raise SystemExit("Use only one target rank-map source: --target-pack or --target-rank-map-json.")
+    if getattr(args, "target_pack", None):
+        target_dir = _resolve_pack_dir(args.target_pack)
+        if not target_dir.exists():
+            raise SystemExit(f"Target pack '{args.target_pack}' not found at {target_dir}")
+        metadata = load_pack_metadata(target_dir / "meta.json")
+        return dict(metadata.rank_map), dict(metadata.alpha_map)
+    if getattr(args, "target_rank_map_json", None):
+        return load_budget_rank_map_json(Path(args.target_rank_map_json).expanduser())
+    return None, None
+
+
+def cmd_rank_map_budget_report(args: argparse.Namespace) -> None:
+    _, metadata, shapes, profile = _rank_budget_source(args)
+    rank_map, alpha_map, source_name = _rank_budget_input_map(args, metadata, shapes, profile)
+    try:
+        report = rank_map_budget_report(
+            rank_map,
+            shapes,
+            profile=profile,
+            alpha_map=alpha_map,
+            tensor_dtype=args.tensor_dtype,
+            alpha_dtype=args.alpha_dtype,
+            file_overhead_bytes=args.file_overhead_bytes,
+            target_budget_bytes=args.target_budget_bytes,
+            name=f"budget_report:{source_name}",
+        )
+    except RankBudgetError as exc:
+        raise SystemExit(str(exc)) from exc
+    _write_json_artifact(Path(args.out), report)
+    _write_markdown_artifact(Path(args.markdown), budget_report_markdown(report))
+    if args.rank_map_out:
+        _write_rank_map_artifact(Path(args.rank_map_out), report["rank_map"], report["alpha_map"])
+    print(f"Rank-map budget report written to {args.out}")
+    print(f"Rank-map budget Markdown written to {args.markdown}")
+
+
+def cmd_rank_map_validate(args: argparse.Namespace) -> None:
+    _, metadata, shapes, profile = _rank_budget_source(args)
+    rank_map, alpha_map, source_name = _rank_budget_input_map(args, metadata, shapes, profile)
+    try:
+        report = rank_map_budget_report(
+            rank_map,
+            shapes,
+            profile=profile,
+            alpha_map=alpha_map,
+            tensor_dtype=args.tensor_dtype,
+            alpha_dtype=args.alpha_dtype,
+            file_overhead_bytes=args.file_overhead_bytes,
+            name=f"validation:{source_name}",
+        )
+    except RankBudgetError as exc:
+        raise SystemExit(str(exc)) from exc
+    report["kind"] = "rank_map_validation_report"
+    _write_json_artifact(Path(args.out), report)
+    _write_markdown_artifact(Path(args.markdown), budget_report_markdown(report))
+    if args.rank_map_out:
+        _write_rank_map_artifact(Path(args.rank_map_out), report["rank_map"], report["alpha_map"])
+    print(f"Rank-map validation report written to {args.out}")
+    print(f"Rank-map validation Markdown written to {args.markdown}")
+
+
+def cmd_rank_map_normalize_budget(args: argparse.Namespace) -> None:
+    _, metadata, shapes, profile = _rank_budget_source(args)
+    source_rank_map, source_alpha_map, _ = _rank_budget_input_map(args, metadata, shapes, profile)
+    target_rank_map = None
+    target_alpha_map = None
+    if args.target == "rank-map":
+        target_rank_map, target_alpha_map = _load_target_rank_map_for_budget(args)
+        if target_rank_map is None:
+            raise SystemExit("--target rank-map requires --target-pack or --target-rank-map-json.")
+    try:
+        report = normalize_rank_map_to_target(
+            source_rank_map,
+            shapes,
+            profile=profile,
+            source_alpha_map=source_alpha_map,
+            target=args.target,
+            target_rank_map=target_rank_map,
+            target_alpha_map=target_alpha_map,
+            explicit_budget_bytes=args.target_bytes,
+            fixed_r32_percent=args.target_fixed_r32_pct,
+            allow_over_budget=args.allow_over_budget,
+            tensor_dtype=args.tensor_dtype,
+            alpha_dtype=args.alpha_dtype,
+            file_overhead_bytes=args.file_overhead_bytes,
+        )
+    except RankBudgetError as exc:
+        raise SystemExit(str(exc)) from exc
+    _write_json_artifact(Path(args.out), report)
+    _write_markdown_artifact(Path(args.markdown), normalization_report_markdown(report))
+    _write_rank_map_artifact(Path(args.rank_map_out), report["rank_map"], report["alpha_map"])
+    print(f"Rank-map normalization report written to {args.out}")
+    print(f"Rank-map normalization Markdown written to {args.markdown}")
+    print(f"Consumable rank map written to {args.rank_map_out}")
+
+
+def cmd_rank_map_random_same_budget(args: argparse.Namespace) -> None:
+    _, metadata, shapes, profile = _rank_budget_source(args)
+    source_rank_map, source_alpha_map, _ = _rank_budget_input_map(args, metadata, shapes, profile)
+    try:
+        report = random_same_budget_rank_map(
+            source_rank_map,
+            shapes,
+            profile=profile,
+            source_alpha_map=source_alpha_map,
+            seed=args.seed,
+            allow_over_budget=args.allow_over_budget,
+            tensor_dtype=args.tensor_dtype,
+            alpha_dtype=args.alpha_dtype,
+            file_overhead_bytes=args.file_overhead_bytes,
+        )
+    except RankBudgetError as exc:
+        raise SystemExit(str(exc)) from exc
+    _write_json_artifact(Path(args.out), report)
+    _write_markdown_artifact(Path(args.markdown), rank_control_report_markdown(report))
+    _write_rank_map_artifact(Path(args.rank_map_out), report["rank_map"], report["alpha_map"])
+    print(f"Random same-budget control written to {args.out}")
+    print(f"Random same-budget Markdown written to {args.markdown}")
+    print(f"Consumable rank map written to {args.rank_map_out}")
+
+
+def cmd_rank_map_shuffled_discovered(args: argparse.Namespace) -> None:
+    _, metadata, shapes, profile = _rank_budget_source(args)
+    source_rank_map, source_alpha_map, _ = _rank_budget_input_map(args, metadata, shapes, profile)
+    try:
+        report = shuffled_discovered_rank_map(
+            source_rank_map,
+            shapes,
+            profile=profile,
+            source_alpha_map=source_alpha_map,
+            seed=args.seed,
+            allow_over_budget=args.allow_over_budget,
+            tensor_dtype=args.tensor_dtype,
+            alpha_dtype=args.alpha_dtype,
+            file_overhead_bytes=args.file_overhead_bytes,
+        )
+    except RankBudgetError as exc:
+        raise SystemExit(str(exc)) from exc
+    _write_json_artifact(Path(args.out), report)
+    _write_markdown_artifact(Path(args.markdown), rank_control_report_markdown(report))
+    _write_rank_map_artifact(Path(args.rank_map_out), report["rank_map"], report["alpha_map"])
+    print(f"Shuffled discovered control written to {args.out}")
+    print(f"Shuffled discovered Markdown written to {args.markdown}")
+    print(f"Consumable rank map written to {args.rank_map_out}")
 
 
 def cmd_rank_ledger(args: argparse.Namespace) -> None:
@@ -1389,6 +1837,125 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--name", required=True)
     inspect.set_defaults(func=cmd_inspect)
 
+    ablation = subparsers.add_parser(
+        "ablation-report",
+        help="Build rank-channel ablation reports and optional ablated pack copies",
+    )
+    ablation.add_argument("--pack", required=True, help="Pack name under packs/ or direct pack directory")
+    ablation.add_argument(
+        "--unit",
+        choices=["channel", "adapter", "target", "layer", "prefix"],
+        default="channel",
+        help="Ablation unit to report",
+    )
+    ablation.add_argument(
+        "--top-k",
+        type=int,
+        default=20,
+        help="Keep only the top-K units by removed update-norm proxy; use 0 for all",
+    )
+    ablation.add_argument(
+        "--prefix-rank",
+        type=int,
+        help="For --unit prefix, keep this prefix rank and zero the suffix channels",
+    )
+    ablation.add_argument(
+        "--targets",
+        help="Optional comma-separated target filter, e.g. attn.q_proj,attn.k_proj",
+    )
+    ablation.add_argument("--layers", help="Optional comma-separated layer index filter")
+    ablation.add_argument(
+        "--ablation-pack-root",
+        help="Optional directory where ablated pack copies are written",
+    )
+    ablation.add_argument(
+        "--baseline-eval",
+        help="Optional baseline eval JSON for paired metric deltas",
+    )
+    ablation.add_argument(
+        "--ablation-eval",
+        action="append",
+        default=[],
+        help="Optional paired ablation eval in the form ABLATION_ID=path; repeatable",
+    )
+    ablation.add_argument("--out", help="Write JSON ablation report")
+    ablation.add_argument("--markdown", help="Write Markdown ablation report")
+    ablation.add_argument("--csv", help="Write ablation rows to CSV")
+    ablation.set_defaults(func=cmd_ablation_report)
+
+    device_profiles = subparsers.add_parser(
+        "device-profiles",
+        help="List local 8GB/16GB/32GB/48GB memory profiles",
+    )
+    device_profiles.add_argument(
+        "--profiles",
+        help="Comma-separated subset, e.g. 8gb,16gb. Defaults to all profiles.",
+    )
+    device_profiles.add_argument("--out", help="Write JSON profile report")
+    device_profiles.add_argument("--markdown", help="Write Markdown profile report")
+    device_profiles.set_defaults(func=cmd_device_profiles)
+
+    memory_ledger = subparsers.add_parser(
+        "memory-ledger",
+        help="Build a local-device memory fit ledger from pack and runtime artifacts",
+    )
+    memory_ledger.add_argument("--name", help="Optional report name")
+    memory_ledger.add_argument("--pack", help="Pack name under packs/ or direct pack directory")
+    memory_ledger.add_argument(
+        "--profiles",
+        help="Comma-separated subset, e.g. 8gb,16gb. Defaults to all profiles.",
+    )
+    memory_ledger.add_argument(
+        "--eval-report",
+        action="append",
+        default=[],
+        help="JSON report from packs eval; repeatable",
+    )
+    memory_ledger.add_argument(
+        "--eval-batch-report",
+        action="append",
+        default=[],
+        help="JSON report from packs eval-batch; repeatable",
+    )
+    memory_ledger.add_argument(
+        "--generation-report",
+        action="append",
+        default=[],
+        help="JSON report from scripts/fault_codes_generate_check.py; repeatable",
+    )
+    memory_ledger.add_argument(
+        "--rank-budget-report",
+        action="append",
+        default=[],
+        help="JSON report from packs rank-map budget/normalize/control commands; repeatable",
+    )
+    memory_ledger.add_argument("--adapter-bytes", type=int, help="Explicit adapter tensor bytes")
+    memory_ledger.add_argument("--adapter-gb", type=float, help="Explicit adapter tensor size in GiB")
+    memory_ledger.add_argument("--base-model-bytes", type=int, help="Optional base model memory estimate")
+    memory_ledger.add_argument("--base-model-gb", type=float, help="Optional base model memory estimate in GiB")
+    memory_ledger.add_argument(
+        "--extra-overhead-gb",
+        type=float,
+        default=0.0,
+        help="Extra runtime overhead to add to observed MLX peaks or static estimates",
+    )
+    memory_ledger.add_argument(
+        "--host-rss-peak-gb",
+        type=float,
+        help="Optional observed host RSS/process peak in GiB",
+    )
+    memory_ledger.add_argument(
+        "--observed-peak-gb",
+        action="append",
+        type=float,
+        default=[],
+        help="Manual observed runtime peak in GiB; repeatable",
+    )
+    memory_ledger.add_argument("--out", help="Write JSON memory ledger")
+    memory_ledger.add_argument("--markdown", help="Write Markdown memory ledger")
+    memory_ledger.add_argument("--csv", help="Write per-profile CSV rows")
+    memory_ledger.set_defaults(func=cmd_memory_ledger)
+
     rank_ledger = subparsers.add_parser(
         "rank-ledger",
         help="Measure effective rank, slack, and overlap for LoRA pack operators",
@@ -1413,6 +1980,219 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate rank-map JSON candidates from probe artifacts",
     )
     rank_map_subparsers = rank_map.add_subparsers(dest="rank_map_command", required=True)
+    rank_map_budget_report = rank_map_subparsers.add_parser(
+        "budget-report",
+        help="Write shape-aware rank-map parameter and byte budget reports",
+    )
+    rank_map_budget_report.add_argument(
+        "--source-pack",
+        required=True,
+        help="Pack name under packs/ or direct pack directory used for adapter shapes",
+    )
+    rank_map_budget_report.add_argument(
+        "--rank-map-json",
+        help="Rank-map JSON to budget; defaults to the source pack metadata rank_map",
+    )
+    rank_map_budget_report.add_argument(
+        "--fixed-rank",
+        type=_parse_rank,
+        help="Budget a fixed-rank map over the source pack adapter set",
+    )
+    rank_map_budget_report.add_argument("--profile", choices=["lite", "heavy"])
+    rank_map_budget_report.add_argument(
+        "--tensor-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp16",
+        help="Element dtype for LoRA A/B byte accounting",
+    )
+    rank_map_budget_report.add_argument(
+        "--alpha-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp32",
+        help="Element dtype for alpha scalar byte accounting",
+    )
+    rank_map_budget_report.add_argument("--file-overhead-bytes", type=int, default=0)
+    rank_map_budget_report.add_argument("--target-budget-bytes", type=int)
+    rank_map_budget_report.add_argument("--out", required=True, help="Write JSON budget report")
+    rank_map_budget_report.add_argument("--markdown", required=True, help="Write Markdown budget report")
+    rank_map_budget_report.add_argument(
+        "--rank-map-out",
+        help="Optionally write a consumable rank_map/alpha_map JSON",
+    )
+    rank_map_budget_report.set_defaults(func=cmd_rank_map_budget_report)
+
+    rank_map_normalize = rank_map_subparsers.add_parser(
+        "normalize-budget",
+        help="Normalize a rank map to a target adapter-byte budget",
+    )
+    rank_map_normalize.add_argument(
+        "--source-pack",
+        required=True,
+        help="Pack name under packs/ or direct pack directory used for adapter shapes",
+    )
+    rank_map_normalize.add_argument(
+        "--rank-map-json",
+        help="Source rank-map JSON; defaults to the source pack metadata rank_map",
+    )
+    rank_map_normalize.add_argument("--profile", choices=["lite", "heavy"])
+    rank_map_normalize.add_argument(
+        "--target",
+        choices=["fixed-r16", "fixed-r32", "rank-map", "bytes", "fixed-r32-percent"],
+        required=True,
+        help="Target budget source",
+    )
+    rank_map_normalize.add_argument("--target-pack", help="Target pack for --target rank-map")
+    rank_map_normalize.add_argument(
+        "--target-rank-map-json",
+        help="Target rank-map JSON for --target rank-map",
+    )
+    rank_map_normalize.add_argument("--target-bytes", type=int, help="Explicit byte budget")
+    rank_map_normalize.add_argument(
+        "--target-fixed-r32-pct",
+        type=float,
+        help="Target budget as a fraction or percentage of fixed r32, e.g. 0.4 or 40",
+    )
+    rank_map_normalize.add_argument("--allow-over-budget", action="store_true")
+    rank_map_normalize.add_argument(
+        "--tensor-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp16",
+        help="Element dtype for LoRA A/B byte accounting",
+    )
+    rank_map_normalize.add_argument(
+        "--alpha-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp32",
+        help="Element dtype for alpha scalar byte accounting",
+    )
+    rank_map_normalize.add_argument("--file-overhead-bytes", type=int, default=0)
+    rank_map_normalize.add_argument("--out", required=True, help="Write JSON normalization report")
+    rank_map_normalize.add_argument("--markdown", required=True, help="Write Markdown normalization report")
+    rank_map_normalize.add_argument(
+        "--rank-map-out",
+        required=True,
+        help="Write consumable rank_map/alpha_map JSON for packs create --rank-map-json",
+    )
+    rank_map_normalize.set_defaults(func=cmd_rank_map_normalize_budget)
+
+    rank_map_random = rank_map_subparsers.add_parser(
+        "random-same-budget",
+        aliases=["random_same_budget"],
+        help="Generate a seeded random rank-map control under the source adapter-byte budget",
+    )
+    rank_map_random.add_argument(
+        "--source-pack",
+        required=True,
+        help="Pack name under packs/ or direct pack directory used for adapter shapes and default budget",
+    )
+    rank_map_random.add_argument(
+        "--rank-map-json",
+        help="Reference discovered rank-map JSON; defaults to the source pack metadata rank_map",
+    )
+    rank_map_random.add_argument("--profile", choices=["lite", "heavy"])
+    rank_map_random.add_argument("--seed", type=int, default=0)
+    rank_map_random.add_argument("--allow-over-budget", action="store_true")
+    rank_map_random.add_argument(
+        "--tensor-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp16",
+        help="Element dtype for LoRA A/B byte accounting",
+    )
+    rank_map_random.add_argument(
+        "--alpha-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp32",
+        help="Element dtype for alpha scalar byte accounting",
+    )
+    rank_map_random.add_argument("--file-overhead-bytes", type=int, default=0)
+    rank_map_random.add_argument("--out", required=True, help="Write JSON control report")
+    rank_map_random.add_argument("--markdown", required=True, help="Write Markdown control report")
+    rank_map_random.add_argument(
+        "--rank-map-out",
+        required=True,
+        help="Write consumable rank_map/alpha_map JSON for packs create --rank-map-json",
+    )
+    rank_map_random.set_defaults(func=cmd_rank_map_random_same_budget)
+
+    rank_map_shuffle = rank_map_subparsers.add_parser(
+        "shuffled-discovered",
+        aliases=["shuffled_discovered"],
+        help="Shuffle discovered ranks across adapters under the same adapter-byte budget",
+    )
+    rank_map_shuffle.add_argument(
+        "--source-pack",
+        required=True,
+        help="Pack name under packs/ or direct pack directory used for adapter shapes and default budget",
+    )
+    rank_map_shuffle.add_argument(
+        "--rank-map-json",
+        help="Reference discovered rank-map JSON; defaults to the source pack metadata rank_map",
+    )
+    rank_map_shuffle.add_argument("--profile", choices=["lite", "heavy"])
+    rank_map_shuffle.add_argument("--seed", type=int, default=0)
+    rank_map_shuffle.add_argument("--allow-over-budget", action="store_true")
+    rank_map_shuffle.add_argument(
+        "--tensor-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp16",
+        help="Element dtype for LoRA A/B byte accounting",
+    )
+    rank_map_shuffle.add_argument(
+        "--alpha-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp32",
+        help="Element dtype for alpha scalar byte accounting",
+    )
+    rank_map_shuffle.add_argument("--file-overhead-bytes", type=int, default=0)
+    rank_map_shuffle.add_argument("--out", required=True, help="Write JSON control report")
+    rank_map_shuffle.add_argument("--markdown", required=True, help="Write Markdown control report")
+    rank_map_shuffle.add_argument(
+        "--rank-map-out",
+        required=True,
+        help="Write consumable rank_map/alpha_map JSON for packs create --rank-map-json",
+    )
+    rank_map_shuffle.set_defaults(func=cmd_rank_map_shuffled_discovered)
+
+    rank_map_validate = rank_map_subparsers.add_parser(
+        "validate",
+        help="Validate a rank-map JSON or source pack rank_map against shape-aware budgets",
+    )
+    rank_map_validate.add_argument(
+        "--source-pack",
+        required=True,
+        help="Pack name under packs/ or direct pack directory used for adapter shapes",
+    )
+    rank_map_validate.add_argument(
+        "--rank-map-json",
+        help="Rank-map JSON to validate; defaults to the source pack metadata rank_map",
+    )
+    rank_map_validate.add_argument(
+        "--fixed-rank",
+        type=_parse_rank,
+        help="Validate a generated fixed-rank map over the source pack adapter set",
+    )
+    rank_map_validate.add_argument("--profile", choices=["lite", "heavy"])
+    rank_map_validate.add_argument(
+        "--tensor-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp16",
+        help="Element dtype for LoRA A/B byte accounting",
+    )
+    rank_map_validate.add_argument(
+        "--alpha-dtype",
+        choices=["fp16", "bf16", "fp32"],
+        default="fp32",
+        help="Element dtype for alpha scalar byte accounting",
+    )
+    rank_map_validate.add_argument("--file-overhead-bytes", type=int, default=0)
+    rank_map_validate.add_argument("--out", required=True, help="Write JSON validation report")
+    rank_map_validate.add_argument("--markdown", required=True, help="Write Markdown validation report")
+    rank_map_validate.add_argument(
+        "--rank-map-out",
+        help="Optionally write a consumable rank_map/alpha_map JSON",
+    )
+    rank_map_validate.set_defaults(func=cmd_rank_map_validate)
+
     rank_map_spectral = rank_map_subparsers.add_parser(
         "spectral",
         help="Generate a spectral-key-biased rank-map JSON candidate",
