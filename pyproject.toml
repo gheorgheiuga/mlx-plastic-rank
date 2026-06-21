@@ -1,6 +1,6 @@
 [project]
 name = "mlx-plastic-rank"
-version = "0.1.0"
+version = "0.1.1"
 description = "mlx-plastic-rank: experimental toolkit for adaptive low-rank layers and neuroplastic compression for Apple MLX"
 readme = "README.md"
 license = { file = "LICENSE" }
