@@ -1,0 +1,30 @@
+{
+  "kind": "rank_map_budget_normalization",
+  "status": "passed",
+  "profile": "heavy",
+  "tensor_dtype": "fp16",
+  "alpha_dtype": "fp32",
+  "target_budget_bytes": 24846880,
+  "source_total_bytes": 25041440,
+  "normalized_total_bytes": 24834592,
+  "budget_slack_bytes": 12288,
+  "source_rank_sum": 1996,
+  "normalized_rank_sum": 1984,
+  "changes": [
+    {
+      "adapter": "blocks.28.attn.q_proj",
+      "action": "demote",
+      "old_rank": 32,
+      "new_rank": 16,
+      "byte_delta": -253952
+    },
+    {
+      "adapter": "blocks.0.attn.k_proj",
+      "action": "promote",
+      "old_rank": 4,
+      "new_rank": 8,
+      "byte_delta": 47104
+    }
+  ],
+  "rank_map": "codex/bakeoffs/rank_maps/text_to_sql_normalized_to_fault_budget.json"
+}

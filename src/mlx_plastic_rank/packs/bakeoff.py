@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import shlex
 import subprocess
 import sys
@@ -16,14 +17,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+from .statistics import compare_answer_mode_metrics
+
 VALID_CANDIDATE_MODES = {
     "fixed_rank",
     "dynamic_rank",
+    "random_same_budget",
     "rank_map_from_candidate",
     "rank_map_from_pack",
     "rank_map_json",
     "resume_pack",
+    "shuffled_discovered",
 }
+
+CONTROL_CANDIDATE_MODES = {"random_same_budget", "shuffled_discovered"}
 
 
 class BakeoffError(ValueError):
@@ -71,10 +78,14 @@ class BakeoffPhase:
     command: tuple[str, ...]
     log_path: Path
     skip_path: Path | None = None
+    additional_skip_paths: tuple[Path, ...] = ()
     output_path: Path | None = None
 
     def should_skip(self, *, force: bool) -> bool:
-        return not force and self.skip_path is not None and self.skip_path.exists()
+        required = tuple(
+            path for path in (self.skip_path, *self.additional_skip_paths) if path is not None
+        )
+        return not force and bool(required) and all(path.exists() for path in required)
 
 
 def load_bakeoff_spec(path: Path, *, root: Path | None = None) -> BakeoffSpec:
@@ -168,6 +179,18 @@ def build_bakeoff_plan(spec: BakeoffSpec, *, force: bool = False) -> list[Bakeof
     phases: list[BakeoffPhase] = []
     for candidate in spec.candidates:
         phase_paths = _candidate_paths(spec, candidate)
+        if candidate.mode in CONTROL_CANDIDATE_MODES:
+            phases.append(
+                BakeoffPhase(
+                    candidate_id=candidate.candidate_id,
+                    phase="rank-map",
+                    command=tuple(_control_rank_map_command(spec, candidate, phase_paths)),
+                    log_path=phase_paths["rank_map_log"],
+                    skip_path=phase_paths["rank_map_json"],
+                    additional_skip_paths=(phase_paths["rank_map_report_json"],),
+                    output_path=phase_paths["rank_map_json"],
+                )
+            )
         phases.append(
             BakeoffPhase(
                 candidate_id=candidate.candidate_id,
@@ -231,6 +254,7 @@ def bakeoff_plan_payload(spec: BakeoffSpec, *, force: bool = False) -> dict[str,
                 "log": str(phase.log_path),
                 "output": str(phase.output_path) if phase.output_path else None,
                 "skip_path": str(phase.skip_path) if phase.skip_path else None,
+                "additional_skip_paths": [str(path) for path in phase.additional_skip_paths],
                 "would_skip": phase.should_skip(force=force),
             }
             for phase in phases
@@ -275,16 +299,34 @@ def build_bakeoff_summary(spec: BakeoffSpec) -> dict[str, Any]:
 
     base_metrics: dict[str, Any] | None = None
     rows: list[dict[str, Any]] = []
+    paired_eval_rows: dict[str, Mapping[str, Any]] = {}
     for candidate in spec.candidates:
         paths = _candidate_paths(spec, candidate)
         eval_rows = _load_eval_rows(paths["eval_json"])
         base_row, pack_row = _find_eval_pair(eval_rows, candidate.pack)
+        paired_eval_rows[candidate.candidate_id] = pack_row
         if base_metrics is None:
             base_metrics = _base_metrics(base_row)
         assert base_metrics is not None
-        ledger = _load_optional_summary(paths["ledger_json"])
+        ledger_report = _load_json(paths["ledger_json"])
+        ledger = _report_summary(ledger_report)
         proof = _load_json(paths["proof_json"])
-        rows.append(_candidate_summary_row(candidate, base_metrics, pack_row, ledger, proof))
+        control_report = (
+            _validated_control_report(spec, candidate, paths, ledger_report)
+            if candidate.mode in CONTROL_CANDIDATE_MODES
+            else {}
+        )
+        rows.append(
+            _candidate_summary_row(
+                spec,
+                candidate,
+                base_metrics,
+                pack_row,
+                ledger,
+                proof,
+                control_report,
+            )
+        )
 
     if base_metrics is None:
         raise BakeoffError("Cannot build bakeoff summary without candidate eval artifacts.")
@@ -303,7 +345,12 @@ def build_bakeoff_summary(spec: BakeoffSpec) -> dict[str, Any]:
         "rows": rows,
         "winner_quality": _winner_quality(rows),
         "winner_tradeoff": _winner_tradeoff(rows),
-        "promotion_gates": _promotion_gate_summary(spec, base_metrics, rows),
+        "promotion_gates": _promotion_gate_summary(
+            spec,
+            base_metrics,
+            rows,
+            paired_eval_rows=paired_eval_rows,
+        ),
     }
 
 
@@ -321,6 +368,14 @@ def write_bakeoff_summary(spec: BakeoffSpec, summary: Mapping[str, Any]) -> None
             "candidate",
             "pack",
             "mode",
+            "control_type",
+            "control_source",
+            "control_seed",
+            "control_rank_map",
+            "control_report",
+            "control_reference_bytes",
+            "control_candidate_bytes",
+            "control_budget_slack_bytes",
             "size_mb",
             "pack_size_bytes",
             "declared_rank",
@@ -381,6 +436,9 @@ def _create_command(spec: BakeoffSpec, candidate: BakeoffCandidate, *, force: bo
     ]
     if bool(_setting(raw, train, "chat_template", False)):
         command.append("--chat-template")
+    _append_option(command, "--batch-seed", _setting(raw, train, "batch_seed", None))
+    _append_option(command, "--training-seed", _setting(raw, train, "training_seed", None))
+    _append_option(command, "--batch-schedule", _setting(raw, train, "batch_schedule", None))
     if bool(_setting(raw, train, "train_fp16_fallback", False)):
         command.append("--train-fp16-fallback")
     if force:
@@ -406,12 +464,218 @@ def _create_command(spec: BakeoffSpec, candidate: BakeoffCandidate, *, force: bo
         command.extend(["--rank-map-json", _required_candidate_text(raw, "rank_map_json")])
     elif candidate.mode == "resume_pack":
         command.extend(["--resume-pack", _required_candidate_text(raw, "resume_pack")])
+    elif candidate.mode in CONTROL_CANDIDATE_MODES:
+        command.extend(["--rank-map-json", str(_candidate_paths(spec, candidate)["rank_map_json"])])
 
     if "notes" in raw:
         command.extend(["--notes", str(raw["notes"])])
     if "min_rank" in raw:
         command.extend(["--min-rank", str(raw["min_rank"])])
     return command
+
+
+def _control_rank_map_command(
+    spec: BakeoffSpec,
+    candidate: BakeoffCandidate,
+    paths: Mapping[str, Path],
+) -> list[str]:
+    """Build the deterministic rank-map preflight for a control candidate."""
+
+    if candidate.mode not in CONTROL_CANDIDATE_MODES:
+        raise BakeoffError(f"Candidate {candidate.candidate_id!r} is not a control candidate.")
+    subcommand = candidate.mode.replace("_", "-")
+    command = [
+        *_cli_prefix(),
+        "rank-map",
+        subcommand,
+        "--source-pack",
+        _control_source_pack(spec, candidate),
+        "--profile",
+        str(candidate.raw.get("profile", spec.profile)),
+        "--seed",
+        str(_control_seed(spec, candidate)),
+        "--out",
+        str(paths["rank_map_report_json"]),
+        "--markdown",
+        str(paths["rank_map_report_markdown"]),
+        "--rank-map-out",
+        str(paths["rank_map_json"]),
+    ]
+    if bool(candidate.raw.get("allow_over_budget", False)):
+        command.append("--allow-over-budget")
+    _append_option(command, "--tensor-dtype", candidate.raw.get("tensor_dtype"))
+    _append_option(command, "--alpha-dtype", candidate.raw.get("alpha_dtype"))
+    _append_option(command, "--file-overhead-bytes", candidate.raw.get("file_overhead_bytes"))
+    return command
+
+
+def _control_source_pack(spec: BakeoffSpec, candidate: BakeoffCandidate) -> str:
+    source_candidate = candidate.raw.get("control_source_candidate")
+    if isinstance(source_candidate, str) and source_candidate.strip():
+        return spec.candidates_by_id[source_candidate.strip()].pack
+    return _required_candidate_text(candidate.raw, "control_source_pack")
+
+
+def _control_seed(spec: BakeoffSpec, candidate: BakeoffCandidate) -> int:
+    value = candidate.raw.get("control_seed", _setting(candidate.raw, spec.train, "seed", 42))
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise BakeoffError(
+            f"Control candidate {candidate.candidate_id!r} requires a non-negative integer seed."
+        )
+    return value
+
+
+def _validated_control_report(
+    spec: BakeoffSpec,
+    candidate: BakeoffCandidate,
+    paths: Mapping[str, Path],
+    ledger_report: Any,
+) -> Mapping[str, Any]:
+    report = _load_json(paths["rank_map_report_json"])
+    rank_map_payload = _load_json(paths["rank_map_json"])
+    if not isinstance(report, Mapping) or not isinstance(rank_map_payload, Mapping):
+        raise BakeoffError(
+            f"Control artifacts for {candidate.candidate_id!r} must be JSON objects."
+        )
+    if report.get("control") != candidate.mode:
+        raise BakeoffError(
+            f"Control report for {candidate.candidate_id!r} has mode "
+            f"{report.get('control')!r}; expected {candidate.mode!r}."
+        )
+    if _int_or_none(report.get("seed")) != _control_seed(spec, candidate):
+        raise BakeoffError(
+            f"Control report for {candidate.candidate_id!r} has a stale or mismatched seed."
+        )
+    if rank_map_payload.get("rank_map") != report.get("rank_map"):
+        raise BakeoffError(
+            f"Control rank map for {candidate.candidate_id!r} does not match its report."
+        )
+    if rank_map_payload.get("alpha_map") != report.get("alpha_map"):
+        raise BakeoffError(
+            f"Control alpha map for {candidate.candidate_id!r} does not match its report."
+        )
+    ledger_rank_map, ledger_alpha_map = _rank_alpha_from_ledger(
+        ledger_report,
+        label=f"Control ledger for {candidate.candidate_id!r}",
+    )
+    if ledger_rank_map != report.get("rank_map"):
+        raise BakeoffError(
+            f"Trained control pack {candidate.candidate_id!r} does not match its generated rank map."
+        )
+    report_alpha_map = report.get("alpha_map")
+    if not _alpha_maps_match(ledger_alpha_map, report_alpha_map):
+        raise BakeoffError(
+            f"Trained control pack {candidate.candidate_id!r} does not match its generated alpha map."
+        )
+    source_rank_map, source_alpha_map = _control_source_rank_alpha(spec, candidate)
+    if source_rank_map != report.get("reference_rank_map"):
+        raise BakeoffError(
+            f"Control {candidate.candidate_id!r} was not generated from its declared source rank map."
+        )
+    if not _alpha_maps_match(source_alpha_map, report.get("reference_alpha_map")):
+        raise BakeoffError(
+            f"Control {candidate.candidate_id!r} was not generated from its declared source alpha map."
+        )
+    reference = report.get("reference_summary")
+    normalized = report.get("normalized_summary")
+    if not isinstance(reference, Mapping) or not isinstance(normalized, Mapping):
+        raise BakeoffError(
+            f"Control report for {candidate.candidate_id!r} is missing budget summaries."
+        )
+    reference_bytes = _int_or_none(reference.get("total_bytes"))
+    candidate_bytes = _int_or_none(normalized.get("total_bytes"))
+    if reference_bytes is None or candidate_bytes is None:
+        raise BakeoffError(
+            f"Control report for {candidate.candidate_id!r} has invalid byte totals."
+        )
+    if candidate_bytes > reference_bytes and not bool(candidate.raw.get("allow_over_budget", False)):
+        raise BakeoffError(
+            f"Control {candidate.candidate_id!r} exceeds its reference budget: "
+            f"{candidate_bytes} > {reference_bytes} bytes."
+        )
+    return report
+
+
+def _rank_alpha_from_ledger(
+    ledger_report: Any,
+    *,
+    label: str,
+) -> tuple[dict[str, int], dict[str, float]]:
+    if not isinstance(ledger_report, Mapping) or not isinstance(
+        ledger_report.get("adapters"), list
+    ):
+        raise BakeoffError(f"{label} is missing adapter provenance.")
+    rank_map: dict[str, int] = {}
+    alpha_map: dict[str, float] = {}
+    for row in ledger_report["adapters"]:
+        if not isinstance(row, Mapping) or not isinstance(row.get("adapter"), str):
+            raise BakeoffError(f"{label} has an invalid adapter row.")
+        adapter = str(row["adapter"])
+        rank = _int_or_none(row.get("declared_rank"))
+        alpha = _float_or_none(row.get("alpha"))
+        if rank is None or alpha is None:
+            raise BakeoffError(f"{label} has invalid rank/alpha provenance.")
+        rank_map[adapter] = rank
+        alpha_map[adapter] = alpha
+    return rank_map, alpha_map
+
+
+def _alpha_maps_match(actual: Mapping[str, float], expected: Any) -> bool:
+    if not isinstance(expected, Mapping) or set(actual) != set(expected):
+        return False
+    for adapter, alpha in actual.items():
+        expected_alpha = _float_or_none(expected.get(adapter))
+        if expected_alpha is None or not math.isclose(
+            alpha,
+            expected_alpha,
+            rel_tol=1e-6,
+            abs_tol=1e-6,
+        ):
+            return False
+    return True
+
+
+def _control_source_rank_alpha(
+    spec: BakeoffSpec,
+    candidate: BakeoffCandidate,
+) -> tuple[dict[str, int], dict[str, float]]:
+    source_candidate_id = candidate.raw.get("control_source_candidate")
+    if isinstance(source_candidate_id, str) and source_candidate_id.strip():
+        source = spec.candidates_by_id[source_candidate_id.strip()]
+        source_ledger = _load_json(_candidate_paths(spec, source)["ledger_json"])
+        return _rank_alpha_from_ledger(
+            source_ledger,
+            label=f"Source ledger for control {candidate.candidate_id!r}",
+        )
+
+    source_reference = _required_candidate_text(candidate.raw, "control_source_pack")
+    source_path = Path(source_reference).expanduser()
+    if not source_path.exists():
+        source_path = Path("packs") / source_reference
+    metadata = _load_json(source_path / "meta.json")
+    if not isinstance(metadata, Mapping) or not isinstance(metadata.get("rank_map"), Mapping):
+        raise BakeoffError(
+            f"Source metadata for control {candidate.candidate_id!r} has no rank map."
+        )
+    try:
+        rank_map = {str(key): int(value) for key, value in metadata["rank_map"].items()}
+    except (TypeError, ValueError) as exc:
+        raise BakeoffError(
+            f"Source metadata for control {candidate.candidate_id!r} has an invalid rank map."
+        ) from exc
+    raw_alpha_map = metadata.get("alpha_map")
+    if not isinstance(raw_alpha_map, Mapping):
+        raw_alpha_map = {}
+    try:
+        alpha_map = {
+            key: float(raw_alpha_map.get(key, 2.0 * rank))
+            for key, rank in rank_map.items()
+        }
+    except (TypeError, ValueError) as exc:
+        raise BakeoffError(
+            f"Source metadata for control {candidate.candidate_id!r} has an invalid alpha map."
+        ) from exc
+    return rank_map, alpha_map
 
 
 def _eval_command(spec: BakeoffSpec, candidate: BakeoffCandidate, out_json: Path, out_csv: Path) -> list[str]:
@@ -504,6 +768,10 @@ def _proof_command(
 def _candidate_paths(spec: BakeoffSpec, candidate: BakeoffCandidate) -> dict[str, Path]:
     base = spec.output_dir / candidate.candidate_id
     return {
+        "rank_map_log": spec.output_dir / f"{candidate.candidate_id}_rank_map.log",
+        "rank_map_report_json": base.with_name(f"{base.name}_rank_map_report.json"),
+        "rank_map_report_markdown": base.with_name(f"{base.name}_rank_map_report.md"),
+        "rank_map_json": base.with_name(f"{base.name}_rank_map.json"),
         "create_log": spec.output_dir / f"{candidate.candidate_id}_create.log",
         "eval_log": spec.output_dir / f"{candidate.candidate_id}_eval.log",
         "ledger_log": spec.output_dir / f"{candidate.candidate_id}_rank_ledger.log",
@@ -568,6 +836,37 @@ def _validate_candidate_mode(
         _required_candidate_text(candidate, "rank_map_json")
     elif mode == "resume_pack":
         _required_candidate_text(candidate, "resume_pack")
+    elif mode in CONTROL_CANDIDATE_MODES:
+        _validate_control_candidate(candidate, seen)
+
+
+def _validate_control_candidate(
+    candidate: Mapping[str, Any],
+    seen: Mapping[str, BakeoffCandidate],
+) -> None:
+    source_candidate = candidate.get("control_source_candidate")
+    source_pack = candidate.get("control_source_pack")
+    has_candidate = isinstance(source_candidate, str) and bool(source_candidate.strip())
+    has_pack = isinstance(source_pack, str) and bool(source_pack.strip())
+    if has_candidate == has_pack:
+        raise BakeoffError(
+            f"Control candidate {candidate.get('id')!r} requires exactly one of "
+            "'control_source_candidate' or 'control_source_pack'."
+        )
+    if has_candidate:
+        source_id = str(source_candidate).strip()
+        if source_id not in seen:
+            raise BakeoffError(
+                f"Control candidate {candidate.get('id')!r} references "
+                f"control_source_candidate {source_id!r}, which must appear earlier "
+                "in the candidates list."
+            )
+    if "control_seed" in candidate:
+        value = candidate["control_seed"]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise BakeoffError(
+                f"Control candidate {candidate.get('id')!r} requires a non-negative integer seed."
+            )
 
 
 def _spec_path(value: str, root: Path) -> Path:
@@ -621,8 +920,7 @@ def _find_eval_pair(rows: list[dict[str, Any]], pack_name: str) -> tuple[dict[st
     return base_row, pack_row
 
 
-def _load_optional_summary(path: Path) -> dict[str, Any]:
-    payload = _load_json(path)
+def _report_summary(payload: Any) -> dict[str, Any]:
     if isinstance(payload, Mapping) and isinstance(payload.get("summary"), Mapping):
         return dict(payload["summary"])
     return {}
@@ -639,11 +937,13 @@ def _base_metrics(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _candidate_summary_row(
+    spec: BakeoffSpec,
     candidate: BakeoffCandidate,
     base: Mapping[str, Any],
     eval_row: Mapping[str, Any],
     ledger: Mapping[str, Any],
     proof: Any,
+    control_report: Any,
 ) -> dict[str, Any]:
     base_ppl = _float_or_none(base.get("perplexity"))
     pack_ppl = _float_or_none(eval_row.get("perplexity", eval_row.get("ppl")))
@@ -669,10 +969,57 @@ def _candidate_summary_row(
     if isinstance(proof, Mapping):
         proof_status = proof.get("status")
 
+    declared_control_type = candidate.raw.get("control_type")
+    control_type = (
+        candidate.mode
+        if candidate.mode in CONTROL_CANDIDATE_MODES
+        else str(declared_control_type).strip()
+        if isinstance(declared_control_type, str) and declared_control_type.strip()
+        else None
+    )
+    control_source = None
+    control_seed = None
+    control_rank_map = None
+    control_report_path = None
+    control_reference_bytes = None
+    control_candidate_bytes = None
+    control_budget_slack_bytes = None
+    if candidate.mode in CONTROL_CANDIDATE_MODES:
+        paths = _candidate_paths(spec, candidate)
+        control_source = _control_source_pack(spec, candidate)
+        control_seed = _control_seed(spec, candidate)
+        control_rank_map = str(paths["rank_map_json"])
+        control_report_path = str(paths["rank_map_report_json"])
+        if isinstance(control_report, Mapping):
+            reference = control_report.get("reference_summary")
+            normalized = control_report.get("normalized_summary")
+            if isinstance(reference, Mapping):
+                control_reference_bytes = _int_or_none(reference.get("total_bytes"))
+            if isinstance(normalized, Mapping):
+                control_candidate_bytes = _int_or_none(normalized.get("total_bytes"))
+                control_budget_slack_bytes = _int_or_none(normalized.get("budget_slack_bytes"))
+    elif control_type is not None:
+        control_source = candidate.raw.get("control_source")
+        control_seed = _int_or_none(candidate.raw.get("control_seed"))
+        control_rank_map = candidate.raw.get("rank_map_json")
+        control_report_path = candidate.raw.get("control_report")
+        control_reference_bytes = _int_or_none(candidate.raw.get("control_reference_bytes"))
+        control_candidate_bytes = _int_or_none(candidate.raw.get("control_candidate_bytes"))
+        if control_reference_bytes is not None and control_candidate_bytes is not None:
+            control_budget_slack_bytes = control_reference_bytes - control_candidate_bytes
+
     return {
         "candidate": candidate.candidate_id,
         "pack": candidate.pack,
         "mode": candidate.mode,
+        "control_type": control_type,
+        "control_source": control_source,
+        "control_seed": control_seed,
+        "control_rank_map": control_rank_map,
+        "control_report": control_report_path,
+        "control_reference_bytes": control_reference_bytes,
+        "control_candidate_bytes": control_candidate_bytes,
+        "control_budget_slack_bytes": control_budget_slack_bytes,
         "size_mb": size_mb,
         "pack_size_bytes": _int_or_none(eval_row.get("pack_size_bytes")),
         "declared_rank": _int_or_none(ledger.get("declared_rank")),
@@ -707,6 +1054,8 @@ def _promotion_gate_summary(
     spec: BakeoffSpec,
     base: Mapping[str, Any],
     rows: list[dict[str, Any]],
+    *,
+    paired_eval_rows: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     by_id = {row["candidate"]: row for row in rows}
     tradeoff = _first_flagged(spec, "tradeoff_candidate")
@@ -751,7 +1100,102 @@ def _promotion_gate_summary(
         )
 
     proof_passed = tradeoff_row.get("proof_status") == "passed"
-    passed = proof_passed and beats_small and retention >= min_retention and size_ratio <= max_size_ratio
+    control_rows = [row for row in rows if row.get("control_type")]
+    require_beats_controls = bool(
+        spec.promotion_gates.get("require_beats_controls", bool(control_rows))
+    )
+    min_control_advantage = float(
+        spec.promotion_gates.get("min_control_ppl_advantage_pct", 0.0)
+    )
+    require_paired_ci = bool(spec.promotion_gates.get("require_paired_ci", False))
+    bootstrap_resamples = int(spec.promotion_gates.get("paired_bootstrap_resamples", 10_000))
+    bootstrap_seed = int(spec.promotion_gates.get("paired_bootstrap_seed", 0))
+    control_comparisons = []
+    for control_row in control_rows:
+        control_ppl = _float_or_none(control_row.get("perplexity"))
+        advantage_pct = None
+        control_passed = False
+        if control_ppl is not None and control_ppl > 0:
+            advantage_pct = ((control_ppl - tradeoff_ppl) / control_ppl) * 100.0
+            control_passed = advantage_pct > min_control_advantage
+        paired = None
+        paired_error = None
+        paired_ci_passed = None
+        if paired_eval_rows is not None:
+            tradeoff_eval = paired_eval_rows.get(tradeoff.candidate_id)
+            control_id = control_row.get("candidate")
+            control_eval = (
+                paired_eval_rows.get(str(control_id)) if control_id is not None else None
+            )
+            if tradeoff_eval is not None and control_eval is not None:
+                try:
+                    paired = compare_answer_mode_metrics(
+                        tradeoff_eval,
+                        control_eval,
+                        resamples=bootstrap_resamples,
+                        seed=bootstrap_seed,
+                    ).to_dict()
+                    ci = paired["ppl_difference_ci"]
+                    paired_ci_passed = float(ci["upper"]) < 0.0
+                except ValueError as exc:
+                    paired_error = str(exc)
+        if require_paired_ci:
+            control_passed = control_passed and paired_ci_passed is True
+        control_comparisons.append(
+            {
+                "candidate": control_row.get("candidate"),
+                "mode": control_row.get("mode"),
+                "control_type": control_row.get("control_type"),
+                "perplexity": control_ppl,
+                "tradeoff_ppl_advantage_pct": advantage_pct,
+                "min_tradeoff_ppl_advantage_pct": min_control_advantage,
+                "paired": paired,
+                "paired_error": paired_error,
+                "paired_ci_passed": paired_ci_passed,
+                "passed": control_passed,
+            }
+        )
+    random_comparisons = [
+        comparison
+        for comparison in control_comparisons
+        if comparison.get("control_type") == "random_same_budget"
+    ]
+    structured_comparisons = [
+        comparison
+        for comparison in control_comparisons
+        if comparison.get("control_type") != "random_same_budget"
+    ]
+    default_random_required = len(random_comparisons)
+    min_random_controls_beaten = int(
+        spec.promotion_gates.get("min_random_controls_beaten", default_random_required)
+    )
+    random_controls_beaten = sum(
+        1 for comparison in random_comparisons if comparison["passed"]
+    )
+    random_controls_passed = random_controls_beaten >= min_random_controls_beaten
+    require_all_structured = bool(
+        spec.promotion_gates.get("require_all_structured_controls", True)
+    )
+    structured_controls_passed = (
+        all(comparison["passed"] for comparison in structured_comparisons)
+        if require_all_structured
+        else True
+    )
+    controls_passed = (
+        bool(control_comparisons)
+        and random_controls_passed
+        and structured_controls_passed
+    )
+    if not require_beats_controls:
+        controls_passed = True
+
+    passed = (
+        proof_passed
+        and beats_small
+        and retention >= min_retention
+        and size_ratio <= max_size_ratio
+        and controls_passed
+    )
     return {
         "candidate": tradeoff.candidate_id,
         "quality_reference": quality.candidate_id,
@@ -763,6 +1207,18 @@ def _promotion_gate_summary(
         "min_retained_quality_gain_ratio": min_retention,
         "size_ratio_vs_quality_reference": size_ratio,
         "max_size_ratio_vs_quality_reference": max_size_ratio,
+        "require_beats_controls": require_beats_controls,
+        "require_paired_ci": require_paired_ci,
+        "paired_bootstrap_resamples": bootstrap_resamples,
+        "paired_bootstrap_seed": bootstrap_seed,
+        "random_controls_beaten": random_controls_beaten,
+        "random_controls_total": len(random_comparisons),
+        "min_random_controls_beaten": min_random_controls_beaten,
+        "random_controls_passed": random_controls_passed,
+        "require_all_structured_controls": require_all_structured,
+        "structured_controls_passed": structured_controls_passed,
+        "controls_passed": controls_passed,
+        "control_comparisons": control_comparisons,
     }
 
 

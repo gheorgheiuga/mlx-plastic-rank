@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
 
+import mlx.core as mx
 import pytest
 
+from mlx_plastic_rank.packs import cli
 from mlx_plastic_rank.packs.capabilities import capability_report, missing_capabilities
 from mlx_plastic_rank.packs.cli import _load_rank_map_json
 from mlx_plastic_rank.packs.eval_utils import (
@@ -103,3 +105,139 @@ def test_capability_report_includes_modality_stack():
     assert missing_capabilities(rows) == [
         row["name"] for row in rows if not row["installed"]
     ]
+
+
+def test_eval_answer_json_reports_dataset_coverage(tmp_path: Path, monkeypatch):
+    class Tokenizer:
+        pad_token_id = 0
+
+        def encode(self, text: str):
+            return [ord(char) % 255 + 1 for char in text]
+
+    class Manager:
+        def __init__(self, model, *, base_checkpoint, base_model):
+            pass
+
+    data_path = tmp_path / "eval.jsonl"
+    data_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"prompt": "one", "answer": "aa"}),
+                json.dumps({"prompt": "two", "answer": "bbb"}),
+                json.dumps({"text": "not supervised"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    out_path = tmp_path / "metrics.json"
+
+    monkeypatch.setattr(cli, "_resolve_base_checkpoint", lambda model_ref: None)
+    monkeypatch.setattr(
+        cli,
+        "_load_base_model",
+        lambda model_ref, loader: (object(), Tokenizer()),
+    )
+    monkeypatch.setattr(cli, "LoRAManager", Manager)
+    monkeypatch.setattr(
+        cli,
+        "_evaluate_supervised_perplexity",
+        lambda model, tokens, masks, batch_size: {
+            "ppl": 1.0,
+            "ppl_se": 0.0,
+            "ppl_se_method": "example_cluster_delta",
+            "token_accuracy": 1.0,
+            "tps": 1.0,
+            "first_token_ms": 0.0,
+            "vram_peak": 0.0,
+            "eval_time_s": 0.0,
+            "tokens": 2,
+            "example_loss_sums": [0.0],
+            "example_token_counts": [2],
+            "example_correct_counts": [2],
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "model_logits",
+        lambda model, inputs: mx.zeros((inputs.shape[0], inputs.shape[1], 256)),
+    )
+
+    args = cli.build_parser().parse_args(
+        [
+            "eval",
+            "--base",
+            "dummy",
+            "--data-path",
+            str(data_path),
+            "--loss-mode",
+            "answer",
+            "--sequence-length",
+            "64",
+            "--num-samples",
+            "1",
+            "--batch-size",
+            "1",
+            "--out",
+            str(out_path),
+        ]
+    )
+
+    cli.cmd_eval(args)
+
+    metrics = json.loads(out_path.read_text(encoding="utf-8"))[0]
+    assert metrics["source_rows"] == 3
+    assert metrics["included_rows"] == 1
+    assert metrics["excluded_rows"] == 2
+    assert metrics["invalid_rows"] == 1
+    assert metrics["sample_limited_rows"] == 1
+    assert metrics["truncated_included_rows"] == 0
+    assert metrics["reference_answer_tokens_total"] == 5
+    assert metrics["reference_answer_tokens_retained"] == 2
+    assert metrics["ppl_se_method"] == "example_cluster_delta"
+    assert metrics["example_loss_sums"] == [0.0]
+    assert metrics["example_token_counts"] == [2]
+    assert metrics["example_correct_counts"] == [2]
+
+
+def test_supervised_eval_computes_loss_and_accuracy_in_one_forward_pass_per_batch():
+    class NextTokenModel:
+        def __init__(self):
+            self.calls = 0
+
+        def __call__(self, inputs):
+            self.calls += 1
+            targets = inputs + 1
+            return mx.eye(4, dtype=mx.float32)[targets] * 20.0
+
+    model = NextTokenModel()
+    tokens = mx.array([[0, 1, 2], [0, 1, 2]], dtype=mx.int32)
+    masks = mx.ones(tokens.shape, dtype=mx.float32)
+
+    metrics = cli._evaluate_supervised_perplexity(model, tokens, masks, batch_size=1)
+
+    assert model.calls == 2
+    assert metrics["token_accuracy"] == pytest.approx(1.0)
+    assert metrics["example_token_counts"] == [2, 2]
+    assert metrics["example_correct_counts"] == [2, 2]
+
+
+def test_clustered_perplexity_se_uses_example_clusters():
+    perplexity = 2.0
+    result = cli._clustered_perplexity_se(
+        [1.0, 5.0],
+        [1, 2],
+        mean_loss=2.0,
+        perplexity=perplexity,
+    )
+
+    assert result == pytest.approx(perplexity * (2.0 / 3.0))
+
+
+def test_clustered_perplexity_se_rejects_mismatched_vectors():
+    with pytest.raises(ValueError, match="equal length"):
+        cli._clustered_perplexity_se(
+            [1.0],
+            [1, 2],
+            mean_loss=1.0,
+            perplexity=2.0,
+        )

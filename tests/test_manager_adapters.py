@@ -409,3 +409,22 @@ def test_compute_auto_ranks_with_theorem():
     assert ranks["attn.v_proj"] == 2
     assert alphas["attn.q_proj"] == pytest.approx(8.0)
     assert residuals["attn.q_proj"] <= 1e-6
+
+
+def test_compute_auto_ranks_with_gram_energy():
+    model = SeparateModel(hidden=4)
+    block = model.model.layers[0]
+    block.self_attn.q_proj.weight = _eye_rank(4, 4)
+    block.self_attn.k_proj.weight = _eye_rank(4, 2)
+    block.self_attn.v_proj.weight = _eye_rank(4, 2)
+
+    manager = LoRAManager(model)
+    ranks, alphas, residuals = manager.compute_auto_ranks(
+        ["attn.q_proj", "attn.k_proj", "attn.v_proj"],
+        strategy="gram_energy",
+        target_compression=0.9,
+    )
+
+    assert ranks == {"attn.q_proj": 4, "attn.k_proj": 2, "attn.v_proj": 2}
+    assert alphas["attn.q_proj"] == pytest.approx(8.0)
+    assert residuals["attn.q_proj"] <= 1e-6

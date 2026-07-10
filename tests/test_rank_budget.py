@@ -14,6 +14,7 @@ from mlx_plastic_rank.packs.rank_budget import (
     adapter_shapes_from_pack,
     consumable_rank_map_payload,
     fixed_rank_map,
+    normalize_rank_map_to_budget,
     normalize_rank_map_to_target,
     random_same_budget_rank_map,
     rank_map_budget_report,
@@ -170,6 +171,29 @@ def test_normalization_is_deterministic_for_same_inputs():
     assert first["changes"] == second["changes"]
 
 
+def test_normalization_honors_restricted_rank_support():
+    shapes = _shapes()
+    support = {4, 16, 32}
+    source = {
+        "blocks.0.attn.q_proj": 32,
+        "blocks.0.attn.k_proj": 4,
+        "blocks.1.attn.q_proj": 16,
+    }
+
+    report = normalize_rank_map_to_budget(
+        source,
+        shapes,
+        profile="heavy",
+        target_budget_bytes=1_500,
+        rank_support=sorted(support),
+    )
+
+    assert report["rank_support"] == sorted(support)
+    assert set(report["rank_map"].values()) <= support
+    assert all(row["old_rank"] in support for row in report["changes"])
+    assert all(row["new_rank"] in support for row in report["changes"])
+
+
 def test_random_same_budget_control_is_budget_safe_and_deterministic():
     shapes = _shapes()
     source = {
@@ -182,8 +206,12 @@ def test_random_same_budget_control_is_budget_safe_and_deterministic():
     second = random_same_budget_rank_map(source, shapes, profile="heavy", seed=11)
 
     assert first["control"] == "random_same_budget"
+    assert first["rank_support"] == [4, 16, 32]
+    assert first["rank_support_source"] == "source_rank_map"
     assert first["rank_map"] == second["rank_map"]
     assert first["changes"] == second["changes"]
+    assert set(first["initial_rank_map"].values()) <= {4, 16, 32}
+    assert set(first["rank_map"].values()) <= {4, 16, 32}
     assert first["normalized_summary"]["total_bytes"] <= first["reference_summary"]["total_bytes"]
     assert first["normalized_summary"]["budget_slack_bytes"] >= 0
     validate_rank_map(first["rank_map"], shapes, profile="heavy", alpha_map=first["alpha_map"])
@@ -200,12 +228,54 @@ def test_shuffled_discovered_control_shuffles_then_normalizes_to_budget():
     report = shuffled_discovered_rank_map(source, shapes, profile="heavy", seed=3)
 
     assert report["control"] == "shuffled_discovered"
+    assert report["rank_support"] == [4, 16, 32]
+    assert report["rank_support_source"] == "source_rank_map"
     assert report["initial_rank_multiset_matches_reference"] is True
     assert sorted(report["initial_rank_map"].values()) == sorted(source.values())
     assert report["shuffle_changed_adapters"] > 0
     assert report["normalized_summary"]["total_bytes"] <= report["reference_summary"]["total_bytes"]
     assert report["normalized_summary"]["budget_slack_bytes"] >= 0
+    assert set(report["rank_map"].values()) <= {4, 16, 32}
     validate_rank_map(report["rank_map"], shapes, profile="heavy", alpha_map=report["alpha_map"])
+
+
+def test_controls_accept_compatible_explicit_search_support():
+    shapes = _shapes()
+    source = {
+        "blocks.0.attn.q_proj": 32,
+        "blocks.0.attn.k_proj": 4,
+        "blocks.1.attn.q_proj": 16,
+    }
+
+    report = random_same_budget_rank_map(
+        source,
+        shapes,
+        profile="heavy",
+        seed=11,
+        rank_support=[4, 8, 16, 32],
+    )
+
+    assert report["rank_support"] == [4, 8, 16, 32]
+    assert report["rank_support_source"] == "explicit"
+    assert set(report["initial_rank_map"].values()) <= {4, 8, 16, 32}
+    assert set(report["rank_map"].values()) <= {4, 8, 16, 32}
+
+
+def test_controls_reject_explicit_support_missing_a_source_rank():
+    shapes = _shapes()
+    source = {
+        "blocks.0.attn.q_proj": 32,
+        "blocks.0.attn.k_proj": 4,
+        "blocks.1.attn.q_proj": 16,
+    }
+
+    with pytest.raises(RankBudgetError, match="missing \\[32\\]"):
+        random_same_budget_rank_map(
+            source,
+            shapes,
+            profile="heavy",
+            rank_support=[4, 8, 16],
+        )
 
 
 def _write_pack(tmp_path: Path) -> Path:

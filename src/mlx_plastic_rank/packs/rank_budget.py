@@ -580,6 +580,71 @@ def _change_row(
     }
 
 
+def _validated_rank_support(
+    rank_support: Iterable[int] | None,
+    *,
+    profile: str,
+    required_ranks: Iterable[int] = (),
+) -> list[int]:
+    """Return a sorted rank support constrained by the selected profile."""
+
+    profile_ranks = set(int(rank) for rank in allowed_ranks_for(profile))
+    if rank_support is None:
+        support = sorted(profile_ranks)
+    else:
+        if isinstance(rank_support, (str, bytes)):
+            raise RankBudgetError("rank_support must be an iterable of integer ranks.")
+        try:
+            raw_support = list(rank_support)
+        except TypeError as exc:
+            raise RankBudgetError("rank_support must be an iterable of integer ranks.") from exc
+        if not raw_support:
+            raise RankBudgetError("rank_support must contain at least one rank.")
+        if any(isinstance(rank, bool) or not isinstance(rank, int) for rank in raw_support):
+            raise RankBudgetError("rank_support entries must be integer ranks.")
+        support = sorted(set(int(rank) for rank in raw_support))
+
+    unsupported = sorted(set(support) - profile_ranks)
+    if unsupported:
+        raise RankBudgetError(
+            f"rank_support contains ranks not allowed for profile={profile}: {unsupported}."
+        )
+    missing = sorted(set(int(rank) for rank in required_ranks) - set(support))
+    if missing:
+        raise RankBudgetError(
+            f"rank_support must include every source-map rank; missing {missing}."
+        )
+    return support
+
+
+def _control_rank_support(
+    source_rank_map: Mapping[str, int],
+    *,
+    profile: str,
+    rank_support: Iterable[int] | None,
+) -> tuple[list[int], str]:
+    """Resolve the search support for a same-budget control."""
+
+    source_ranks = list(source_rank_map.values())
+    if rank_support is None:
+        return (
+            _validated_rank_support(
+                source_ranks,
+                profile=profile,
+                required_ranks=source_ranks,
+            ),
+            "source_rank_map",
+        )
+    return (
+        _validated_rank_support(
+            rank_support,
+            profile=profile,
+            required_ranks=source_ranks,
+        ),
+        "explicit",
+    )
+
+
 def normalize_rank_map_to_budget(
     source_rank_map: Mapping[str, Any],
     shapes: Mapping[str, AdapterShape],
@@ -592,6 +657,7 @@ def normalize_rank_map_to_budget(
     alpha_dtype: str = "fp32",
     file_overhead_bytes: int = 0,
     target: Mapping[str, Any] | None = None,
+    rank_support: Iterable[int] | None = None,
 ) -> dict[str, Any]:
     """Normalize a source map to fit a target byte budget."""
 
@@ -603,7 +669,11 @@ def normalize_rank_map_to_budget(
     )
     if target_budget_bytes < 0:
         raise RankBudgetError("target_budget_bytes must be >= 0.")
-    allowed = sorted(allowed_ranks_for(profile))
+    allowed = _validated_rank_support(
+        rank_support,
+        profile=profile,
+        required_ranks=normalized_source.values(),
+    )
     if not allowed:
         raise RankBudgetError(f"No ranks are allowed for profile={profile}.")
     current = dict(normalized_source)
@@ -759,6 +829,7 @@ def normalize_rank_map_to_budget(
         "kind": "rank_map_budget_normalization",
         "status": "passed" if final_total <= target_budget_bytes else "over_budget_allowed",
         "profile": profile,
+        "rank_support": allowed,
         "tensor_dtype": tensor_dtype,
         "alpha_dtype": alpha_dtype,
         "target": dict(target or {"kind": TARGET_BYTES, "budget_bytes": target_budget_bytes}),
@@ -785,6 +856,7 @@ def normalize_rank_map_to_target(
     tensor_dtype: str = "fp16",
     alpha_dtype: str = "fp32",
     file_overhead_bytes: int = 0,
+    rank_support: Iterable[int] | None = None,
 ) -> dict[str, Any]:
     """Normalize a rank map against a named target budget."""
 
@@ -818,6 +890,7 @@ def normalize_rank_map_to_target(
         alpha_dtype=alpha_dtype,
         file_overhead_bytes=file_overhead_bytes,
         target=target_info,
+        rank_support=rank_support,
     )
 
 
@@ -863,6 +936,7 @@ def _control_report(
     reference: Mapping[str, Any],
     initial_rank_map: Mapping[str, int],
     normalized: Mapping[str, Any],
+    rank_support_source: str,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
@@ -871,6 +945,8 @@ def _control_report(
         "status": normalized["status"],
         "seed": int(seed),
         "profile": normalized["profile"],
+        "rank_support": list(normalized["rank_support"]),
+        "rank_support_source": rank_support_source,
         "tensor_dtype": normalized["tensor_dtype"],
         "alpha_dtype": normalized["alpha_dtype"],
         "target": {
@@ -904,6 +980,7 @@ def random_same_budget_rank_map(
     tensor_dtype: str = "fp16",
     alpha_dtype: str = "fp32",
     file_overhead_bytes: int = 0,
+    rank_support: Iterable[int] | None = None,
 ) -> dict[str, Any]:
     """Generate a seeded random rank-map control under the source byte budget."""
 
@@ -917,7 +994,11 @@ def random_same_budget_rank_map(
         file_overhead_bytes=file_overhead_bytes,
     )
     rng = random.Random(int(seed))
-    allowed = sorted(int(rank) for rank in allowed_ranks_for(profile))
+    allowed, rank_support_source = _control_rank_support(
+        reference["rank_map"],
+        profile=profile,
+        rank_support=rank_support,
+    )
     initial_rank_map = {
         adapter: int(rng.choice(allowed))
         for adapter in sorted(reference["rank_map"])
@@ -936,6 +1017,7 @@ def random_same_budget_rank_map(
             "budget_bytes": reference["budget_bytes"],
             "control": "random_same_budget",
         },
+        rank_support=allowed,
     )
     return _control_report(
         control="random_same_budget",
@@ -943,6 +1025,7 @@ def random_same_budget_rank_map(
         reference=reference,
         initial_rank_map=initial_rank_map,
         normalized=normalized,
+        rank_support_source=rank_support_source,
     )
 
 
@@ -973,6 +1056,7 @@ def shuffled_discovered_rank_map(
     tensor_dtype: str = "fp16",
     alpha_dtype: str = "fp32",
     file_overhead_bytes: int = 0,
+    rank_support: Iterable[int] | None = None,
 ) -> dict[str, Any]:
     """Shuffle discovered ranks across adapters, then normalize to the same byte budget."""
 
@@ -987,6 +1071,11 @@ def shuffled_discovered_rank_map(
     )
     adapters = sorted(reference["rank_map"])
     source_ranks = [int(reference["rank_map"][adapter]) for adapter in adapters]
+    allowed, rank_support_source = _control_rank_support(
+        reference["rank_map"],
+        profile=profile,
+        rank_support=rank_support,
+    )
     shuffled_ranks = _shuffled_values(source_ranks, seed=int(seed))
     initial_rank_map = {
         adapter: int(rank)
@@ -1006,6 +1095,7 @@ def shuffled_discovered_rank_map(
             "budget_bytes": reference["budget_bytes"],
             "control": "shuffled_discovered",
         },
+        rank_support=allowed,
     )
     final_rank_map = normalized["rank_map"]
     shuffle_rows = [
@@ -1025,6 +1115,7 @@ def shuffled_discovered_rank_map(
         reference=reference,
         initial_rank_map=initial_rank_map,
         normalized=normalized,
+        rank_support_source=rank_support_source,
         extra={
             "shuffle": shuffle_rows,
             "shuffle_changed_adapters": changed,

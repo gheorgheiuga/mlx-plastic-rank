@@ -1,0 +1,14 @@
+{
+  "kind": "target_constant_rank_map_control",
+  "description": "Architecture-neutral target allocation: q=16, k=16, v=8 on every layer.",
+  "rank_map": {
+    "attn.q_proj": 16,
+    "attn.k_proj": 16,
+    "attn.v_proj": 8
+  },
+  "alpha_map": {
+    "attn.q_proj": 32.0,
+    "attn.k_proj": 32.0,
+    "attn.v_proj": 16.0
+  }
+}

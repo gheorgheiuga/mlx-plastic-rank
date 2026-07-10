@@ -23,7 +23,7 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
   - Current mxfp8 smoke: local cache 12 GB, load 2.6-3.5s, generation about 31 tok/s at 8 tokens, peak about 12.73 GB, no-op pack 3.4 MB with matching deterministic output.
   - Current IT QAT mxfp8 chat smoke: local cache 12 GB, warm load 2.8s, peak about 12.75 GB, coherent assistant response when `--chat-template` is used.
 - Packs workflow:
-  - Train: `uv run packs create --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --layers attn.q_proj,attn.k_proj,attn.v_proj --loader auto --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`
+  - Train: `uv run packs create --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --layers attn.q_proj,attn.k_proj,attn.v_proj --loader auto --rank-strategy gram_energy --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`
     - Gemma 4 unified any-to-any bases load through `mlx-vlm`; q ranks keep the requested capacity while grouped k/v ranks scale to the key/value head width. Add `attn.o_proj` only after checking pack size.
   - Inspect: `uv run packs inspect --name domain-demo`
   - Apply safely: `uv run packs apply --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
@@ -60,7 +60,11 @@ Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the b
   - Dry-run full bakeoff: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json --dry-run`
   - Full bakeoff: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json`
   - Promotion gate: the hetero/rank-map candidate must pass proof, beat fixed r16 on held-out PPL or token accuracy, retain at least 90% of fixed r32 improvement over base, and use at most 60% of fixed r32 adapter bytes.
-- Pop-theorem rank ledger:
+- Paired fault-code rank-placement screen:
+  - Run or resume: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/fault_codes_paired_control_screen_seed42.json`
+  - Review snapshot: `codex/evidence/fault_codes_paired_control_screen_seed42.json`
+  - Result: the discovered map passed all single-seed gates, including 5/5 random controls and all structured controls. The normalized Text-to-SQL transplant was only 1.12% worse, so treat the result as evidence for useful placement with weak domain specificity, not theorem validation.
+- Rank ledger (rank-accounting instrumentation, not theorem validation):
   - Inspect pack rank budget: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_ledger_r32_300.json --csv out/fault_codes_rank_ledger_r32_300.csv`
   - Compare pack overlap/composition: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r16-300 --compare fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_compare_r16_300_vs_r32_300.json --csv out/fault_codes_rank_compare_r16_300_vs_r32_300.csv`
   - First readout: `r32/300` has 136 adapters, declared rank 4352, effective rank 4352, zero rank slack, and 13,041 bytes per effective rank. Compared with `r16/300`, composition rank is additive (2176 + 4352 = 6528), rank savings is 0, row/column overlap is 0, and mean absolute Frobenius cosine is about 0.0097. The extra `r32` capacity is mostly new rank direction, not duplicated `r16` direction.

@@ -1,0 +1,82 @@
+{
+  "kind": "text_to_sql_fullscale_summary",
+  "run_date": "2026-06-10",
+  "evidence_status": "local replication quality-positive; original unpaired gate passed; paired controls pending",
+  "source_spec": "codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json",
+  "raw_summary": "out/text_to_sql_gemma4_it_fullscale_bakeoff/text_to_sql_gemma4_it_fullscale_summary.json",
+  "base_model": "mlx-community/gemma-4-12B-it-qat-mxfp8",
+  "dataset": {
+    "name": "gretelai/synthetic_text_to_sql",
+    "license": "Apache-2.0",
+    "train_rows": 10000,
+    "eval_rows": 1000
+  },
+  "base_metrics": {
+    "perplexity": 1.9675079209920796,
+    "token_accuracy": 0.8595801526717557,
+    "eval_time_s": 896.8364589214325,
+    "tokens_per_sec": 29.2137989478138,
+    "peak_memory_gb": 13.722289577126503
+  },
+  "rows": [
+    {
+      "candidate": "fixed_r16_600",
+      "pack": "text-to-sql-gemma4-it-answer-r16-10k-600",
+      "size_mb": 27.09990692138672,
+      "pack_size_bytes": 28416312,
+      "effective_rank": 2176,
+      "perplexity": 1.8498002132968714,
+      "ppl_improvement_pct": 5.982578592916479,
+      "token_accuracy": 0.8643893129770992,
+      "accuracy_gain_vs_base": 0.004809160305343507,
+      "proof_status": "passed"
+    },
+    {
+      "candidate": "fixed_r32_600",
+      "pack": "text-to-sql-gemma4-it-answer-r32-10k-600",
+      "size_mb": 54.162506103515625,
+      "pack_size_bytes": 56793504,
+      "effective_rank": 4352,
+      "perplexity": 1.7468560750960547,
+      "ppl_improvement_pct": 11.214788186711102,
+      "token_accuracy": 0.8776335877862596,
+      "accuracy_gain_vs_base": 0.018053435114503857,
+      "proof_status": "passed"
+    },
+    {
+      "candidate": "dynamic_r32_init8_min4_150",
+      "pack": "text-to-sql-gemma4-it-answer-dynamic-r32-init8-min4-10k-150",
+      "size_mb": 23.917991638183594,
+      "pack_size_bytes": 25079832,
+      "effective_rank": 1996,
+      "perplexity": 1.944320785901855,
+      "ppl_improvement_pct": 1.1785027568546178,
+      "token_accuracy": 0.8604198473282443,
+      "accuracy_gain_vs_base": 0.0008396946564885877,
+      "proof_status": "passed"
+    },
+    {
+      "candidate": "hetero_r32_init8_min4_map_600",
+      "pack": "text-to-sql-gemma4-it-answer-hetero-r32-init8-min4-10k-map-600",
+      "size_mb": 23.917991638183594,
+      "pack_size_bytes": 25079832,
+      "effective_rank": 1996,
+      "perplexity": 1.7599906111732722,
+      "ppl_improvement_pct": 10.547215978381965,
+      "token_accuracy": 0.8755725190839695,
+      "accuracy_gain_vs_base": 0.0159923664122138,
+      "proof_status": "passed"
+    }
+  ],
+  "promotion": {
+    "candidate": "hetero_r32_init8_min4_map_600",
+    "passed": true,
+    "retained_r32_quality_gain": 0.9404739351992246,
+    "size_ratio_vs_r32": 0.4415968417796514
+  },
+  "limitations": [
+    "Candidate training was not paired with fixed-rank anchors or same-budget controls.",
+    "Random and shuffled control candidates now present in the spec remain unrun.",
+    "The result does not establish domain-specific discovery or theorem causality."
+  ]
+}

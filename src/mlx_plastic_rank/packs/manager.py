@@ -493,7 +493,7 @@ class LoRAManager:
         eps: float = 1e-6,
         allowed_ranks: tuple[int, ...] | None = None,
     ) -> Tuple[Dict[str, int], Dict[str, float], Dict[str, float]]:
-        if strategy not in {"stable", "theorem"}:
+        if strategy not in {"stable", "gram_energy", "theorem"}:
             raise PackApplicationError(f"Unsupported rank strategy '{strategy}'")
         if not targets:
             raise PackApplicationError("No targets specified for auto rank selection")
@@ -516,7 +516,7 @@ class LoRAManager:
             if int(slice_weight.shape[0]) == 0 or int(slice_weight.shape[1]) == 0:
                 raise PackApplicationError(f"Unable to compute rank for empty slice '{target}'")
             mat_for_rank = slice_weight
-            if strategy == "theorem":
+            if strategy in {"gram_energy", "theorem"}:
                 mat_for_rank = mx.matmul(slice_weight, mx.transpose(slice_weight))
             mx.eval(mat_for_rank)
             rank, residual = choose_rank(mat_for_rank, target_compression, strategy=strategy, eps=eps)
@@ -784,6 +784,21 @@ class LoRAManager:
             raise PackApplicationError(
                 f"Base hash mismatch: expected {self.base_hash}, pack built for {metadata.base_hash}"
             )
+        hashes_match = bool(
+            self.base_hash
+            and metadata.base_hash
+            and metadata.base_hash == self.base_hash
+        )
+        if (
+            self.base_model
+            and metadata.base_model
+            and self.base_model != metadata.base_model
+            and not hashes_match
+        ):
+            raise PackApplicationError(
+                f"Base model mismatch: expected {self.base_model}, "
+                f"pack built for {metadata.base_model}"
+            )
         self._validate_rank_alpha(metadata.rank_map, metadata.alpha_map, profile=metadata.profile)
         tensors = load_pack(tensor_path)
         expected_keys: set[str] = set()
@@ -801,9 +816,9 @@ class LoRAManager:
                 f"Pack size {total_bytes / (1024**2):.2f} MB exceeds limit {(limit / (1024**2)):.1f} MB"
             )
         self._ensure_wrapped()
-        self.detach_pack()
-        for key, adapter in self._load_adapters_from_tensors(tensors, metadata).items():
-            self._adapter_registry[key] = adapter
+        staged_adapters = self._load_adapters_from_tensors(tensors, metadata)
+        staged_attachments: list[tuple[str, SliceLoRA, LoRAFusedLinear]] = []
+        for key, adapter in staged_adapters.items():
             block_idx, target = self._parse_adapter_name(key)
             spec = self._target_specs.get(target)
             if spec is None:
@@ -813,8 +828,17 @@ class LoRAManager:
                 raise PackApplicationError(
                     f"Missing wrapper for block {block_idx} attribute '{spec.wrapper_attr}'"
                 )
+            try:
+                wrapper.validate_adapter(adapter)
+            except ValueError as exc:
+                raise PackApplicationError(f"Cannot attach {key}: {exc}") from exc
+            staged_attachments.append((key, adapter, wrapper))
+
+        self.detach_pack()
+        for key, adapter, wrapper in staged_attachments:
             wrapper.add_adapter(adapter)
             wrapper.set_dropout(0.0)
+            self._adapter_registry[key] = adapter
             print(
                 f"Attached LoRA slice {key}: rank={adapter.rank} alpha={adapter.alpha} slice=({adapter.start},{adapter.end})"
             )
@@ -846,6 +870,27 @@ class LoRAManager:
                 raise PackApplicationError(f"Missing tensors for {key}")
             A = tensors[A_key]
             B = tensors[B_key]
+            alpha_value = np.asarray(alpha_arr)
+            if alpha_value.ndim != 0:
+                raise PackApplicationError(
+                    f"LoRA alpha tensor for {key} must be a scalar, found shape {alpha_value.shape}"
+                )
+            if alpha_value.dtype != np.dtype(np.float32):
+                raise PackApplicationError(
+                    f"LoRA alpha tensor for {key} must use float32, found {alpha_value.dtype}"
+                )
+            actual_alpha = float(alpha_value.item())
+            expected_alpha = float(metadata.alpha_map.get(key, 2.0 * rank))
+            if not math.isclose(
+                actual_alpha,
+                expected_alpha,
+                rel_tol=1e-6,
+                abs_tol=1e-6,
+            ):
+                raise PackApplicationError(
+                    f"LoRA alpha mismatch on {key}: metadata declares {expected_alpha}, "
+                    f"tensor contains {actual_alpha}"
+                )
             target = key.split(".", 2)[2]
             block_idx, _ = self._parse_adapter_name(key)
             spec = self._target_specs.get(target)
@@ -883,7 +928,7 @@ class LoRAManager:
                 start=expected_start,
                 end=expected_end,
                 rank=rank,
-                alpha=float(np.asarray(alpha_arr).reshape(()).item()),
+                alpha=actual_alpha,
                 A=mx.array(A.astype(np.float16, copy=False)),
                 B=mx.array(B.astype(np.float16, copy=False)),
                 input_dim=expected_input,

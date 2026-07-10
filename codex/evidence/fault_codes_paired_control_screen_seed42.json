@@ -1,0 +1,196 @@
+{
+  "kind": "fault_codes_paired_control_screen_seed42_evidence",
+  "run_date": "2026-07-09",
+  "evidence_status": "single-seed paired falsification screen; diagnostic, not confirmatory multi-seed evidence",
+  "source_spec": "codex/bakeoffs/fault_codes_paired_control_screen_seed42.json",
+  "raw_summary": "out/fault_codes_paired_control_screen_seed42/fault_codes_paired_control_screen_seed42_summary.json",
+  "base_model": "mlx-community/gemma-4-12B-it-qat-mxfp8",
+  "cached_base_snapshot": "d8989284106d7dffb71f00823961d5e9220729cd",
+  "dataset": {
+    "name": "avneetsingla/industrial-fault-codes-sample",
+    "license": "CC BY-NC 4.0",
+    "train_rows": 2700,
+    "eval_rows": 300,
+    "answer_tokens_train": 147019,
+    "answer_tokens_eval": 16165,
+    "exclusions": 0,
+    "answer_token_retention": 1.0
+  },
+  "paired_protocol": {
+    "adapter_init_seed": 42,
+    "batch_seed": 42001,
+    "training_seed": 42002,
+    "batch_schedule_digest": "38064bf681eb2b0a80f2bb803b2273e2160253434551b0e422b1ccf3c26be4a1",
+    "steps": 600,
+    "batch_size": 1,
+    "sequence_length": 256,
+    "learning_rate": 0.00005,
+    "lora_dropout": 0.05,
+    "bootstrap_resamples": 5000,
+    "bootstrap_seed": 42
+  },
+  "context_anchors": [
+    {
+      "candidate": "fixed_r16_context",
+      "size_mb": 27.09990692138672,
+      "effective_rank": 2176,
+      "perplexity": 8.567680968971105,
+      "token_accuracy": 0.6515310856789359,
+      "paired_training": false
+    },
+    {
+      "candidate": "fixed_r32_context",
+      "size_mb": 54.162506103515625,
+      "effective_rank": 4352,
+      "perplexity": 5.56224440587073,
+      "token_accuracy": 0.6802350757810084,
+      "paired_training": false
+    }
+  ],
+  "discovered_candidate": {
+    "candidate": "discovered_paired_600",
+    "size_mb": 23.732521057128906,
+    "pack_size_bytes": 24885352,
+    "effective_rank": 1984,
+    "perplexity": 5.853199476834605,
+    "token_accuracy": 0.6756572842561088,
+    "ppl_improvement_pct": 62.06993988569296,
+    "proof_status": "passed"
+  },
+  "controls": [
+    {
+      "candidate": "random_seed17_paired_600",
+      "control_type": "random_same_budget",
+      "size_mb": 23.72473907470703,
+      "perplexity": 8.74228804816644,
+      "token_accuracy": 0.6509124652025982,
+      "ppl_difference_vs_discovered": -2.8890885713318353,
+      "ppl_difference_ci_95": [
+        -3.103656575819666,
+        -2.6924916973467634
+      ],
+      "relative_discovered_advantage": 0.33047281849032384,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    },
+    {
+      "candidate": "random_seed19_paired_600",
+      "control_type": "random_same_budget",
+      "size_mb": 23.7227783203125,
+      "perplexity": 8.599153646570446,
+      "token_accuracy": 0.6492421899164862,
+      "ppl_difference_vs_discovered": -2.7459541697358416,
+      "ppl_difference_ci_95": [
+        -2.9548881587908573,
+        -2.5549804513878893
+      ],
+      "relative_discovered_advantage": 0.31932842260947336,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    },
+    {
+      "candidate": "random_seed23_paired_600",
+      "control_type": "random_same_budget",
+      "size_mb": 23.7188720703125,
+      "perplexity": 9.01171890443561,
+      "token_accuracy": 0.6471388802969378,
+      "ppl_difference_vs_discovered": -3.1585194276010045,
+      "ppl_difference_ci_95": [
+        -3.3980007724274635,
+        -2.93606696033508
+      ],
+      "relative_discovered_advantage": 0.3504902295661227,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    },
+    {
+      "candidate": "random_seed29_paired_600",
+      "control_type": "random_same_budget",
+      "size_mb": 23.726715087890625,
+      "perplexity": 9.2571614139026,
+      "token_accuracy": 0.646272811630065,
+      "ppl_difference_vs_discovered": -3.4039619370679945,
+      "ppl_difference_ci_95": [
+        -3.6623027648327002,
+        -3.1695361492541507
+      ],
+      "relative_discovered_advantage": 0.36771120053668427,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    },
+    {
+      "candidate": "random_seed31_paired_600",
+      "control_type": "random_same_budget",
+      "size_mb": 23.732521057128906,
+      "perplexity": 7.838812212975483,
+      "token_accuracy": 0.6569130838230746,
+      "ppl_difference_vs_discovered": -1.9856127361408786,
+      "ppl_difference_ci_95": [
+        -2.139242266927585,
+        -1.8435087734493343
+      ],
+      "relative_discovered_advantage": 0.2533053072574082,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    },
+    {
+      "candidate": "shuffled_seed17_paired_600",
+      "control_type": "shuffled_discovered",
+      "size_mb": 23.732498168945312,
+      "perplexity": 8.26044607217254,
+      "token_accuracy": 0.6552428085369626,
+      "ppl_difference_vs_discovered": -2.407246595337935,
+      "ppl_difference_ci_95": [
+        -2.595168723633006,
+        -2.235107194021742
+      ],
+      "relative_discovered_advantage": 0.2914184747779386,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    },
+    {
+      "candidate": "target_constant_paired_600",
+      "control_type": "target_constant",
+      "size_mb": 23.50605010986328,
+      "perplexity": 9.797033533527058,
+      "token_accuracy": 0.6430559851531086,
+      "ppl_difference_vs_discovered": -3.9438340566924532,
+      "ppl_difference_ci_95": [
+        -4.240759850815408,
+        -3.6716422611206476
+      ],
+      "relative_discovered_advantage": 0.40255389993266893,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    },
+    {
+      "candidate": "sql_map_transplant_paired_600",
+      "control_type": "cross_domain_normalized",
+      "size_mb": 23.720726013183594,
+      "perplexity": 5.9193954420371115,
+      "token_accuracy": 0.6728116300649551,
+      "ppl_difference_vs_discovered": -0.06619596520250681,
+      "ppl_difference_ci_95": [
+        -0.0849046446461076,
+        -0.04845766858219832
+      ],
+      "relative_discovered_advantage": 0.011182892890110077,
+      "probability_discovered_better": 1.0,
+      "passed": true
+    }
+  ],
+  "promotion": {
+    "passed": true,
+    "retained_r32_quality_gain": 0.9705192211503889,
+    "size_ratio_vs_r32": 0.4381725064894746,
+    "random_controls_beaten": 5,
+    "random_controls_total": 5,
+    "structured_controls_passed": true,
+    "paired_ci_required": true
+  },
+  "interpretation": {
+    "supported": "At this byte budget and seed, the discovered rank placement is causally better than random, shuffled, target-constant, and cross-domain-transplanted allocations under paired training and evaluation.",
+    "narrowing": "The cross-domain SQL map is only 1.12% worse in perplexity, so most allocation benefit appears transferable and may reflect base-model architecture or training schedule rather than domain semantics.",
+    "not_supported": "This does not validate Pop matrix-polynomial theory, a general domain-specific discovery claim, or multi-seed/base/dataset generalization."
+  }
+}

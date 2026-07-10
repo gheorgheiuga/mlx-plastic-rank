@@ -121,6 +121,24 @@ uv run packs create \
   --profile heavy
 ```
 
+## Bakeoff-Native Controls
+
+Control generation can live directly in a bakeoff spec. Each control produces a resumable `rank-map` preflight before its create/eval/ledger/proof phases:
+
+```json
+{
+  "id": "random_control_seed17",
+  "pack": "fault-codes-random-control-seed17",
+  "mode": "random_same_budget",
+  "control_source_candidate": "hetero_map",
+  "control_seed": 17
+}
+```
+
+Use `mode: "shuffled_discovered"` for the rank-multiset shuffle. Exactly one of `control_source_candidate` (an earlier candidate in the same spec) or `control_source_pack` (an existing pack name/path) is required. Generated reports, Markdown, and consumable maps are written beside the other bakeoff artifacts and skipped on resume unless `--force` is used. Summary construction cross-checks the declared source ledger/metadata, control mode, seed, generated map, trained-pack ledger, alpha payload, and byte budget so stale or mismatched control artifacts cannot be promoted silently.
+
+When controls are present, promotion requires the tradeoff candidate to beat every control on perplexity by default. Configure `promotion_gates.require_beats_controls` or `promotion_gates.min_control_ppl_advantage_pct` to make that policy explicit.
+
 ## Tensor Bytes Versus File Size
 
 Rank-budget reports keep tensor bytes separate from file size.
@@ -152,7 +170,7 @@ Without equal-budget controls, a quality win may just be a size win. Without ran
 - The normalization solver is deterministic and conservative, not globally optimal. It never exceeds the target budget unless `--allow-over-budget` is used, but it may leave slack.
 - Current normalization starts from an existing map, demotes if over budget, then promotes while changes still fit.
 - Shape discovery from a pack only covers adapters present in that pack. Use a source pack with the intended adapter universe when comparing maps.
-- Random and shuffled controls are generated as rank-map artifacts, but bakeoff specs do not yet have first-class candidate modes for them.
+- Bakeoff runs one seed per candidate today; multi-seed expansion and aggregate confidence intervals are not yet first-class.
 - A shuffled discovered control preserves the discovered rank multiset before normalization. If q/k/v/o adapter shapes differ, the final normalized map may need rank promotions or demotions to stay within the byte budget.
 - Device-profile feasibility now lives in `packs memory-ledger`; the rank-budget module itself still only accounts adapter bytes.
 - Training-time memory and host RSS are not measured automatically.

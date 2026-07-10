@@ -13,7 +13,7 @@ The primary LoRA training entrypoint is the `packs` console script declared in `
 - model loading through `--loader auto|mlx-lm|mlx-vlm`;
 - target selection through `--layers`, defaulting to `attn.q_proj,attn.k_proj,attn.v_proj`;
 - fixed-rank training through `--rank`;
-- automatic rank selection through `--rank-strategy stable|theorem`, `--target-compression`, `--rank-eps`, and `--min-rank`;
+- automatic rank selection through `--rank-strategy stable|gram_energy`, `--target-compression`, `--rank-eps`, and `--min-rank` (`theorem` is retained only as a legacy alias);
 - frozen continuation from an existing pack through `--resume-pack`;
 - fresh training from an existing pack's exported heterogeneous map through `--rank-map-from-pack`;
 - fresh training from a standalone rank-map JSON through `--rank-map-json`;
@@ -225,69 +225,35 @@ Both committed bakeoff specs define:
 
 The fixed runs are not a separate benchmark framework. They are bakeoff candidates that expand into `packs create --rank 16` or `packs create --rank 32`.
 
-## 9. Missing pieces for the next research phase
+## 9. Next research-phase readiness
 
 ### Equal-budget heterogeneous rank maps
 
-Partially present, but not general. The spectral rank-map builder can produce a same-budget candidate by promoting selected `k_proj` adapters and demoting `q_proj` adapters until an estimated params/bytes budget is met. That is a specific spectral-key policy, not a general equal-budget heterogeneous rank-map facility.
-
-Missing:
-
-- a reusable budget solver that can match any source budget exactly or within declared tolerance;
-- first-class budget targets such as match fixed r16, match discovered hetero, or match r32 percentage;
-- per-adapter shape-aware accounting exposed outside the spectral policy;
-- validation that generated maps cover the intended adapter set and preserve allowed-rank/profile constraints;
-- bakeoff-native generation of equal-budget maps before training.
+Implemented in `packs/rank_budget.py` and the `packs rank-map` CLI family. The shared layer now exposes shape-aware parameter/byte accounting, fixed-rank and rank-map targets, fixed-r32 percentages, profile/rank validation, deterministic normalization, and consumable `rank_map`/`alpha_map` artifacts. Bakeoff control candidates use the same interface before training. The conservative solver may leave budget slack; it is not a globally optimal allocator.
 
 ### Random same-budget rank maps
 
-Missing. There is no CLI or helper that samples random rank allocations under the same parameter/byte budget as a discovered or spectral map.
+Implemented as `packs rank-map random-same-budget` and as the bakeoff candidate mode `random_same_budget`. The generator is seeded, shape-aware, budget-normalized, and writes both an audit report and a consumable rank map. Bakeoff records the control type, source pack, seed, and map artifact, then requires the tradeoff candidate to beat included controls before promotion by default.
 
-Needed:
-
-- seeded random rank-map generator;
-- exact or tolerance-based budget matching;
-- configurable constraints such as preserve target counts, preserve per-target budget, preserve layer eligibility, or allow any adapter;
-- multiple random controls per seed/run;
-- artifact metadata naming the source budget and RNG seed.
+Multi-seed expansion and aggregate confidence intervals remain open.
 
 ### Shuffled rank maps
 
-Missing. There is no map-shuffle control that preserves the discovered rank multiset while permuting ranks across adapters.
+Implemented as `packs rank-map shuffled-discovered` and as the bakeoff candidate mode `shuffled_discovered`. It seed-shuffles the discovered rank multiset, normalizes the shape-aware byte budget when adapter geometries differ, emits auditable artifacts, and runs through the same resumable bakeoff preflight as the random control.
 
-Needed:
-
-- shuffle generator preserving global rank histogram;
-- optional constrained shuffles by target type, attention layer type, layer band, or adapter shape class;
-- seed-controlled outputs;
-- validation that the shuffled map has the same estimated budget as the source map;
-- bakeoff candidate mode or pre-generation phase for shuffled controls.
+Optional constrained shuffles by target, layer band, or shape class remain open.
 
 ### Causal rank-channel ablations
 
-Mostly missing. The low-level format can represent `alpha = 0.0`, and dynamic rank export can truncate active columns, but there is no causal ablation runner.
+Implemented as `packs ablation-report` for channel, adapter, target, layer, and prefix interventions. It writes immutable ablated pack copies and can attach paired eval deltas while labeling proxy-only output separately from paired causal evidence.
 
-Needed:
-
-- a way to mask or remove individual rank channels, rank prefixes, adapters, targets, or layer groups without permanently mutating source packs;
-- paired eval over the same examples for each ablation;
-- reports that attribute quality deltas to rank channels or adapter groups;
-- controls for zero-alpha vs physical rank slicing;
-- artifact schema for ablation unit, baseline metrics, ablated metrics, deltas, and confidence intervals;
-- guardrails to distinguish causal evidence from mere correlation in the learned rank map.
+Automatic evaluation orchestration, physical rank slicing controls, and confidence intervals remain open.
 
 ### 8GB/16GB/32GB/48GB device profiles
 
-Missing. The current `profile` field means adapter rank/size guardrail (`lite` or `heavy`), not machine memory class.
+Implemented in `packs/device_profiles.py` and exposed through `packs memory-ledger`. The 8GB/16GB/32GB/48GB profiles are separate from adapter `lite`/`heavy` limits and produce feasibility reports from base, adapter, overhead, and optional observed-memory inputs.
 
-Needed:
-
-- a device-profile model, likely separate from pack profile, with names `8gb`, `16gb`, `32gb`, `48gb`;
-- per-profile defaults for base model, loader, batch size, sequence length, eval sample cap, rank ceiling, and allowed candidate families;
-- hard/soft memory budgets using MLX peak memory plus optional RSS;
-- preflight checks before long training/eval;
-- artifact fields recording requested device profile, detected memory, and observed peak memory;
-- bakeoff promotion/failure gates tied to profile budgets.
+Automatic training-time RSS capture and bakeoff promotion gates tied to observed profile budgets remain open.
 
 ### Statistical multi-seed reports
 
@@ -302,40 +268,40 @@ Needed:
 - bootstrap or nonparametric summaries over eval examples, especially for answer-only loss where `perplexity_se` is currently `0.0`;
 - pass/fail gates that require hetero maps to beat random/shuffled controls across seeds, not just one run.
 
-## Proposed file-level implementation plan
+## Implementation status and remaining file-level plan
 
-1. Add `src/mlx_plastic_rank/packs/rank_budget.py`.
+1. Implemented: `src/mlx_plastic_rank/packs/rank_budget.py`.
 
-   Move or wrap the shape and byte estimation logic currently in `rank_map.py`. Provide reusable functions for loading adapter shapes, estimating params/bytes, validating allowed ranks, and solving bounded budget matching.
+   Centralizes adapter-shape loading, parameter/byte estimates, allowed-rank validation, and bounded budget matching.
 
-2. Extend `src/mlx_plastic_rank/packs/rank_map.py`.
+2. Implemented: extend `src/mlx_plastic_rank/packs/rank_map.py`.
 
-   Add generators for equal-budget, random same-budget, and shuffled rank maps. Keep spectral-key generation as one policy on top of the shared budget layer.
+   Equal-budget, random same-budget, shuffled, and spectral policies now share the budget layer.
 
-3. Extend `src/mlx_plastic_rank/packs/cli.py`.
+3. Implemented: extend `src/mlx_plastic_rank/packs/cli.py`.
 
-   Add `packs rank-map equal-budget`, `packs rank-map random`, and `packs rank-map shuffle` subcommands. Each should write the same consumable `rank_map`/`alpha_map` format plus generator metadata.
+   The `packs rank-map` commands write a common consumable `rank_map`/`alpha_map` format plus generator metadata.
 
-4. Extend `src/mlx_plastic_rank/packs/bakeoff.py`.
+4. Partially implemented: extend `src/mlx_plastic_rank/packs/bakeoff.py`.
 
-   Add an optional preflight map-generation phase and candidate expansion for generated controls. Add `seeds` support that expands candidate IDs and pack names deterministically, then writes both per-run and aggregate summaries.
+   The resumable preflight map-generation phase and first-class random/shuffled control modes are implemented. Add `seeds` support that expands candidate IDs and pack names deterministically, then writes both per-run and aggregate summaries.
 
-5. Add `src/mlx_plastic_rank/packs/ablation.py`.
+5. Implemented: `src/mlx_plastic_rank/packs/ablation.py`.
 
-   Implement temporary pack transformations for zero-alpha, adapter removal, target removal, layer-group removal, and rank-prefix/channel slicing. Keep source packs immutable and write ablation reports as separate artifacts.
+   Temporary channel, adapter, target, layer, and prefix interventions keep source packs immutable and write separate ablation artifacts.
 
-6. Add `src/mlx_plastic_rank/packs/device_profiles.py`.
+6. Implemented: `src/mlx_plastic_rank/packs/device_profiles.py`.
 
-   Define 8GB/16GB/32GB/48GB runtime profiles and expose them through create/eval/bakeoff flags. Record requested profile and observed memory in eval, proof, and bakeoff summaries.
+   Defines 8GB/16GB/32GB/48GB runtime profiles and emits requested-versus-observed memory feasibility artifacts.
 
 7. Add `src/mlx_plastic_rank/packs/stats.py`.
 
    Centralize aggregate statistics, paired deltas, bootstrap CIs, and control comparisons. Use this from bakeoff summaries and future proof gates.
 
-8. Update tests.
+8. Continue test expansion.
 
-   Add focused tests for budget equality, seeded random reproducibility, shuffle preservation, ablation pack immutability, device profile validation, and multi-seed aggregation. Extend existing `tests/test_bakeoff.py`, `tests/test_packs_cli_parser.py`, and `tests/test_spectral_rank_map.py` rather than creating broad integration tests first.
+   Budget equality, seeded random reproducibility, shuffle preservation, ablation pack immutability, device profiles, and bakeoff control preflights are covered. Add multi-seed aggregation coverage with the future stats module.
 
-9. Add new experimental specs under `codex/bakeoffs/`.
+9. Extend the experimental specs under `codex/bakeoffs/`.
 
-   Create a next-phase fault-code control spec and a text-to-SQL replication spec that include fixed references, discovered hetero maps, equal-budget random controls, shuffled controls, ablations, device profile gates, and multi-seed reporting. Keep DSN/decision status experimental until those runs complete.
+   The fault-code and text-to-SQL specs now include fixed references, discovered hetero maps, and equal-budget random/shuffled controls. Add multi-seed reporting and optional ablation/profile gates while keeping decision status experimental until those runs complete.

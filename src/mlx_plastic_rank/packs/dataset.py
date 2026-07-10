@@ -3,10 +3,48 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Mapping, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 import mlx.core as mx
+
+
+@dataclass(frozen=True)
+class SupervisedDatasetCoverage:
+    """Accounting for which supervised source rows and answer tokens are scored."""
+
+    source_rows: int
+    included_rows: int
+    invalid_rows: int
+    answer_outside_sequence_rows: int
+    sample_limited_rows: int
+    truncated_included_rows: int
+    reference_answer_tokens_total: int
+    reference_answer_tokens_retained: int
+
+    @property
+    def excluded_rows(self) -> int:
+        return self.source_rows - self.included_rows
+
+    def as_metrics(self) -> Dict[str, int | float | None]:
+        token_retention = (
+            self.reference_answer_tokens_retained / self.reference_answer_tokens_total
+            if self.reference_answer_tokens_total > 0
+            else None
+        )
+        return {
+            "source_rows": self.source_rows,
+            "included_rows": self.included_rows,
+            "excluded_rows": self.excluded_rows,
+            "invalid_rows": self.invalid_rows,
+            "answer_outside_sequence_rows": self.answer_outside_sequence_rows,
+            "sample_limited_rows": self.sample_limited_rows,
+            "truncated_included_rows": self.truncated_included_rows,
+            "reference_answer_tokens_total": self.reference_answer_tokens_total,
+            "reference_answer_tokens_retained": self.reference_answer_tokens_retained,
+            "reference_answer_token_retention": token_retention,
+        }
 
 
 def _chat_template_source(obj: Mapping[str, Any]) -> list[dict[str, str]] | None:
@@ -137,33 +175,79 @@ def build_supervised_token_dataset(
     *,
     chat_template: bool = False,
 ) -> tuple[mx.array, mx.array]:
+    tokens, masks, _ = build_supervised_token_dataset_with_coverage(
+        path,
+        tokenizer,
+        sequence_length,
+        chat_template=chat_template,
+    )
+    return tokens, masks
+
+
+def build_supervised_token_dataset_with_coverage(
+    path: Path,
+    tokenizer: Any,
+    sequence_length: int,
+    *,
+    chat_template: bool = False,
+    max_samples: int | None = None,
+) -> tuple[mx.array, mx.array, SupervisedDatasetCoverage]:
+    """Build answer-masked rows and report source-to-evaluation coverage.
+
+    Reference answer token totals include every source row with a renderable
+    prompt/answer pair. Retained token counts include only answer tokens that
+    remain in rows selected for evaluation after sequence and sample limits.
+    """
+
+    if max_samples is not None and max_samples <= 0:
+        raise ValueError("max_samples must be positive when provided")
+
     token_rows: list[list[int]] = []
     mask_rows: list[list[float]] = []
     pad_id = _pad_token_id(tokenizer)
+    source_rows = 0
+    invalid_rows = 0
+    answer_outside_sequence_rows = 0
+    sample_limited_rows = 0
+    truncated_included_rows = 0
+    reference_answer_tokens_total = 0
+    reference_answer_tokens_retained = 0
 
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
+            source_rows += 1
             obj = json.loads(line)
             rendered = _render_prompt_and_full(tokenizer, obj, chat_template)
             if rendered is None:
+                invalid_rows += 1
                 continue
             prompt_text, full_text = rendered
             prompt_tokens = tokenizer.encode(prompt_text)
             full_tokens = tokenizer.encode(full_text)
             if len(full_tokens) < 2:
+                invalid_rows += 1
                 continue
 
             answer_start = min(len(prompt_tokens), len(full_tokens))
+            reference_answer_tokens_total += max(len(full_tokens) - answer_start, 0)
             tokens = full_tokens[:sequence_length]
             mask = [0.0] * len(tokens)
             for idx in range(answer_start, len(tokens)):
                 mask[idx] = 1.0
-            if sum(mask[1:]) <= 0.0:
+            retained_answer_tokens = int(sum(mask[1:]))
+            if retained_answer_tokens <= 0:
+                answer_outside_sequence_rows += 1
+                continue
+            if max_samples is not None and len(token_rows) >= max_samples:
+                sample_limited_rows += 1
                 continue
 
+            if len(full_tokens) > sequence_length:
+                truncated_included_rows += 1
+            reference_answer_tokens_retained += retained_answer_tokens
             if len(tokens) < sequence_length:
                 pad_len = sequence_length - len(tokens)
                 tokens.extend([pad_id] * pad_len)
@@ -174,7 +258,21 @@ def build_supervised_token_dataset(
 
     if not token_rows:
         raise ValueError(f"No supervised prompt/answer entries found in {path}")
-    return mx.array(token_rows, dtype=mx.int32), mx.array(mask_rows, dtype=mx.float32)
+    coverage = SupervisedDatasetCoverage(
+        source_rows=source_rows,
+        included_rows=len(token_rows),
+        invalid_rows=invalid_rows,
+        answer_outside_sequence_rows=answer_outside_sequence_rows,
+        sample_limited_rows=sample_limited_rows,
+        truncated_included_rows=truncated_included_rows,
+        reference_answer_tokens_total=reference_answer_tokens_total,
+        reference_answer_tokens_retained=reference_answer_tokens_retained,
+    )
+    return (
+        mx.array(token_rows, dtype=mx.int32),
+        mx.array(mask_rows, dtype=mx.float32),
+        coverage,
+    )
 
 
 def sample_minibatch(

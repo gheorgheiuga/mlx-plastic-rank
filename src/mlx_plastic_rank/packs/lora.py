@@ -97,7 +97,9 @@ class LoRAFusedLinear(nn.Module):
         self.adapters: Dict[str, SliceLoRA] = {}
         self.dropout = float(dropout)
 
-    def add_adapter(self, adapter: SliceLoRA) -> None:
+    def validate_adapter(self, adapter: SliceLoRA) -> None:
+        """Validate attachment geometry without mutating the wrapper."""
+
         if adapter.end > self.output_dim:
             raise ValueError(
                 f"LoRA slice {adapter.name} end {adapter.end} exceeds output dim {self.output_dim}"
@@ -110,6 +112,9 @@ class LoRAFusedLinear(nn.Module):
             raise ValueError(
                 f"LoRA slice {adapter.name} output dim mismatch"
             )
+
+    def add_adapter(self, adapter: SliceLoRA) -> None:
+        self.validate_adapter(adapter)
         self.adapters[adapter.name] = adapter
 
     def remove_adapter(self, name: str) -> None:

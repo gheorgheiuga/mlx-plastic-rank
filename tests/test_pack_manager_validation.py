@@ -6,7 +6,7 @@ import pytest
 mx = pytest.importorskip("mlx.core", reason="MLX not installed; skipping")
 import mlx.nn as nn
 
-from mlx_plastic_rank.packs.io import save_pack, save_pack_metadata
+from mlx_plastic_rank.packs.io import load_pack_metadata, save_pack, save_pack_metadata
 from mlx_plastic_rank.packs.manager import LoRAManager, PackApplicationError
 
 
@@ -33,15 +33,46 @@ class FusedModel:
         self.model_type = "gpt2"
 
 
-def _write_pack(tmp_path):
+def _write_pack(tmp_path, *, base_model=None, base_checkpoint=None):
     source_model = FusedModel(hidden=8)
-    source_manager = LoRAManager(source_model)
+    source_manager = LoRAManager(
+        source_model,
+        base_checkpoint=base_checkpoint,
+        base_model=base_model,
+    )
     source_manager.initialize_adapters(["attn.q_proj"], rank=4, alpha=8.0, seed=0)
     tensors, metadata = source_manager.export_active_pack("demo", tmp_path)
     pack_dir = tmp_path / "demo"
     save_pack(tensors, pack_dir / "pack.safetensors")
     save_pack_metadata(metadata, pack_dir / "meta.json")
     return pack_dir, tensors
+
+
+def test_apply_pack_rejects_mismatched_remote_base_model(tmp_path):
+    pack_dir, _ = _write_pack(tmp_path, base_model="org/model-a")
+    manager = LoRAManager(FusedModel(hidden=8), base_model="org/model-b")
+
+    with pytest.raises(PackApplicationError, match="Base model mismatch"):
+        manager.apply_pack(pack_dir)
+
+
+def test_apply_pack_accepts_different_base_labels_when_hashes_match(tmp_path):
+    checkpoint = tmp_path / "model.safetensors"
+    checkpoint.write_bytes(b"same-checkpoint")
+    pack_dir, _ = _write_pack(
+        tmp_path,
+        base_model="local-alias-a",
+        base_checkpoint=checkpoint,
+    )
+    manager = LoRAManager(
+        FusedModel(hidden=8),
+        base_model="local-alias-b",
+        base_checkpoint=checkpoint,
+    )
+
+    metadata = manager.apply_pack(pack_dir)
+
+    assert metadata.pack_name == "demo"
 
 
 def test_apply_pack_rejects_unexpected_tensor(tmp_path):
@@ -65,6 +96,95 @@ def test_apply_pack_rejects_rank_mismatch(tmp_path):
     manager = LoRAManager(FusedModel(hidden=8))
     with pytest.raises(PackApplicationError, match="rank mismatch"):
         manager.apply_pack(pack_dir)
+
+
+def test_apply_pack_rejects_non_scalar_alpha_tensor(tmp_path):
+    pack_dir, tensors = _write_pack(tmp_path)
+    tampered = dict(tensors)
+    key = "blocks.0.attn.q_proj.lora.alpha"
+    tampered[key] = np.array([8.0], dtype=np.float32)
+    save_pack(tampered, pack_dir / "pack.safetensors")
+
+    manager = LoRAManager(FusedModel(hidden=8))
+    with pytest.raises(PackApplicationError, match="scalar"):
+        manager.apply_pack(pack_dir)
+
+
+def test_apply_pack_rejects_non_fp32_alpha_tensor(tmp_path):
+    pack_dir, tensors = _write_pack(tmp_path)
+    tampered = dict(tensors)
+    key = "blocks.0.attn.q_proj.lora.alpha"
+    tampered[key] = np.array(8.0, dtype=np.float16)
+    save_pack(tampered, pack_dir / "pack.safetensors")
+
+    manager = LoRAManager(FusedModel(hidden=8))
+    with pytest.raises(PackApplicationError, match="float32"):
+        manager.apply_pack(pack_dir)
+
+
+def test_apply_pack_rejects_alpha_tensor_metadata_mismatch(tmp_path):
+    pack_dir, tensors = _write_pack(tmp_path)
+    tampered = dict(tensors)
+    key = "blocks.0.attn.q_proj.lora.alpha"
+    tampered[key] = np.array(123.0, dtype=np.float32)
+    save_pack(tampered, pack_dir / "pack.safetensors")
+
+    manager = LoRAManager(FusedModel(hidden=8))
+    with pytest.raises(PackApplicationError, match="alpha mismatch"):
+        manager.apply_pack(pack_dir)
+
+
+def test_failed_pack_validation_preserves_active_adapters(tmp_path):
+    valid_dir, _ = _write_pack(tmp_path / "valid")
+    invalid_dir, invalid_tensors = _write_pack(tmp_path / "invalid")
+    alpha_key = "blocks.0.attn.q_proj.lora.alpha"
+    invalid_tensors[alpha_key] = np.array(123.0, dtype=np.float32)
+    save_pack(invalid_tensors, invalid_dir / "pack.safetensors")
+
+    manager = LoRAManager(FusedModel(hidden=8))
+    manager.apply_pack(valid_dir)
+    active_before = dict(manager.iter_adapters())
+
+    with pytest.raises(PackApplicationError, match="alpha mismatch"):
+        manager.apply_pack(invalid_dir)
+
+    active_after = dict(manager.iter_adapters())
+    assert active_after == active_before
+
+
+def test_failed_wrapper_prevalidation_preserves_active_adapters(tmp_path, monkeypatch):
+    valid_dir, _ = _write_pack(tmp_path / "valid")
+    replacement_dir, _ = _write_pack(tmp_path / "replacement")
+    manager = LoRAManager(FusedModel(hidden=8))
+    manager.apply_pack(valid_dir)
+    active_before = dict(manager.iter_adapters())
+    wrapper = next(iter(manager._wrappers.values()))
+
+    def reject_attachment(adapter):
+        raise ValueError(f"rejected {adapter.name}")
+
+    monkeypatch.setattr(wrapper, "validate_adapter", reject_attachment)
+
+    with pytest.raises(PackApplicationError, match="Cannot attach"):
+        manager.apply_pack(replacement_dir)
+
+    assert dict(manager.iter_adapters()) == active_before
+
+
+def test_apply_pack_accepts_zero_alpha_when_metadata_and_tensor_match(tmp_path):
+    pack_dir, tensors = _write_pack(tmp_path)
+    adapter_key = "blocks.0.attn.q_proj"
+    alpha_key = f"{adapter_key}.lora.alpha"
+    tensors[alpha_key] = np.array(0.0, dtype=np.float32)
+    save_pack(tensors, pack_dir / "pack.safetensors")
+    metadata = load_pack_metadata(pack_dir / "meta.json")
+    metadata.alpha_map[adapter_key] = 0.0
+    save_pack_metadata(metadata, pack_dir / "meta.json")
+
+    manager = LoRAManager(FusedModel(hidden=8))
+    manager.apply_pack(pack_dir)
+
+    assert dict(manager.iter_adapters())[adapter_key].alpha == 0.0
 
 
 def test_applied_pack_adapters_remain_trainable_and_reexportable(tmp_path):

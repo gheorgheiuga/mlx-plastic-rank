@@ -21,7 +21,8 @@ class PlasticityManager:
     - tol: float = 1e-4
         Tolerance passed to pruning logic and some heuristics.
     - strategy: str = "stable"
-        Rank selection strategy: "stable" energy cutoff or "theorem".
+        Rank selection strategy: direct "stable" energy cutoff or
+        "gram_energy". The legacy name "theorem" remains accepted.
     - target_compression: float = 0.9
         Fraction of spectral energy to retain when choosing rank (higher keeps more).
     - gamma: float = 1e-3
@@ -55,10 +56,11 @@ class PlasticityManager:
         self.history.append(val_loss)
         if len(self.history) < 2:
             return
-        if abs(self.history[-1] - self.history[-2]) < self.delta:
-            self._plastic_phase()
-        # Reactivation path: if last action was shrink and loss worsened beyond gamma
-        if len(self.history) >= 2 and (self.history[-1] - self.history[-2]) > self.gamma:
+        loss_delta = self.history[-1] - self.history[-2]
+        # Reactivate before considering a new plastic action. This makes each
+        # observation authorize one transition and prevents shrink/wake churn.
+        woke_layer = False
+        if loss_delta > self.gamma:
             for idx, lyr in enumerate(self.layers):
                 if self._last_action.get(idx) == "shrink" and lyr.sleep_dict:
                     # wake last K sleepers (here K=1 for simplicity)
@@ -74,6 +76,12 @@ class PlasticityManager:
                         val_before=self.history[-2],
                         val_after=self.history[-1],
                     )
+                    self._last_action[idx] = "wake"
+                    woke_layer = True
+        if woke_layer:
+            return
+        if abs(loss_delta) < self.delta:
+            self._plastic_phase()
 
     def _plastic_phase(self):
         logger = get_logger()

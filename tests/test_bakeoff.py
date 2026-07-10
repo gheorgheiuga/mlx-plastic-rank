@@ -87,6 +87,31 @@ def _base_payload(tmp_path: Path) -> dict:
     }
 
 
+def _add_control_candidates(
+    payload: dict,
+    *,
+    external_source_pack: str = "external-discovered-pack",
+) -> None:
+    payload["candidates"].extend(
+        [
+            {
+                "id": "random_control",
+                "pack": "demo-random-control",
+                "mode": "random_same_budget",
+                "control_source_candidate": "hetero_map",
+                "control_seed": 17,
+            },
+            {
+                "id": "shuffled_control",
+                "pack": "demo-shuffled-control",
+                "mode": "shuffled_discovered",
+                "control_source_pack": external_source_pack,
+                "control_seed": 23,
+            },
+        ]
+    )
+
+
 def test_bakeoff_parser_rejects_missing_data(tmp_path: Path):
     payload = _base_payload(tmp_path)
     Path(tmp_path / "data/train.jsonl").unlink()
@@ -111,6 +136,57 @@ def test_bakeoff_parser_rejects_invalid_candidate_mode(tmp_path: Path):
         validate_bakeoff_spec(payload, root=tmp_path)
 
 
+def test_bakeoff_parser_requires_exactly_one_control_source(tmp_path: Path):
+    payload = _base_payload(tmp_path)
+    payload["candidates"].append(
+        {
+            "id": "random_control",
+            "pack": "demo-random-control",
+            "mode": "random_same_budget",
+        }
+    )
+
+    with pytest.raises(BakeoffError, match="exactly one"):
+        validate_bakeoff_spec(payload, root=tmp_path)
+
+    payload["candidates"][-1]["control_source_candidate"] = "hetero_map"
+    payload["candidates"][-1]["control_source_pack"] = "external-pack"
+    with pytest.raises(BakeoffError, match="exactly one"):
+        validate_bakeoff_spec(payload, root=tmp_path)
+
+
+def test_bakeoff_parser_requires_control_source_candidate_to_appear_first(tmp_path: Path):
+    payload = _base_payload(tmp_path)
+    payload["candidates"].insert(
+        0,
+        {
+            "id": "random_control",
+            "pack": "demo-random-control",
+            "mode": "random_same_budget",
+            "control_source_candidate": "hetero_map",
+        },
+    )
+
+    with pytest.raises(BakeoffError, match="must appear earlier"):
+        validate_bakeoff_spec(payload, root=tmp_path)
+
+
+def test_bakeoff_parser_rejects_invalid_control_seed(tmp_path: Path):
+    payload = _base_payload(tmp_path)
+    payload["candidates"].append(
+        {
+            "id": "random_control",
+            "pack": "demo-random-control",
+            "mode": "random_same_budget",
+            "control_source_candidate": "hetero_map",
+            "control_seed": -1,
+        }
+    )
+
+    with pytest.raises(BakeoffError, match="non-negative integer seed"):
+        validate_bakeoff_spec(payload, root=tmp_path)
+
+
 def test_bakeoff_plan_emits_deterministic_create_eval_ledger_proof_phases(tmp_path: Path):
     spec = validate_bakeoff_spec(_base_payload(tmp_path), root=tmp_path)
 
@@ -124,6 +200,49 @@ def test_bakeoff_plan_emits_deterministic_create_eval_ledger_proof_phases(tmp_pa
     assert "--dynamic-rank" in dynamic_create.command
     hetero_create = next(phase for phase in phases if phase.candidate_id == "hetero_map" and phase.phase == "create")
     assert hetero_create.command[hetero_create.command.index("--rank-map-from-pack") + 1] == "demo-dynamic"
+
+
+def test_bakeoff_plan_generates_resumable_control_maps_before_training(tmp_path: Path):
+    payload = _base_payload(tmp_path)
+    _add_control_candidates(payload)
+    spec = validate_bakeoff_spec(payload, root=tmp_path)
+
+    phases = build_bakeoff_plan(spec)
+    random_phases = [phase for phase in phases if phase.candidate_id == "random_control"]
+    assert [phase.phase for phase in random_phases] == [
+        "rank-map",
+        "create",
+        "eval",
+        "rank-ledger",
+        "proof",
+    ]
+
+    rank_map_phase, create_phase = random_phases[:2]
+    assert "random-same-budget" in rank_map_phase.command
+    assert rank_map_phase.command[rank_map_phase.command.index("--source-pack") + 1] == "demo-hetero"
+    assert rank_map_phase.command[rank_map_phase.command.index("--seed") + 1] == "17"
+    rank_map_out = rank_map_phase.command[rank_map_phase.command.index("--rank-map-out") + 1]
+    assert create_phase.command[create_phase.command.index("--rank-map-json") + 1] == rank_map_out
+    assert rank_map_phase.output_path == Path(rank_map_out)
+    assert rank_map_phase.should_skip(force=False) is False
+    rank_map_phase.output_path.parent.mkdir(parents=True, exist_ok=True)
+    rank_map_phase.output_path.write_text("{}", encoding="utf-8")
+    assert rank_map_phase.should_skip(force=False) is False
+    assert len(rank_map_phase.additional_skip_paths) == 1
+    rank_map_phase.additional_skip_paths[0].write_text("{}", encoding="utf-8")
+    assert rank_map_phase.should_skip(force=False) is True
+    assert rank_map_phase.should_skip(force=True) is False
+
+    shuffled_phase = next(
+        phase
+        for phase in phases
+        if phase.candidate_id == "shuffled_control" and phase.phase == "rank-map"
+    )
+    assert "shuffled-discovered" in shuffled_phase.command
+    assert (
+        shuffled_phase.command[shuffled_phase.command.index("--source-pack") + 1]
+        == "external-discovered-pack"
+    )
 
 
 def test_bakeoff_summary_computes_winners_and_promotion_gate(tmp_path: Path):
@@ -170,3 +289,145 @@ def test_bakeoff_summary_computes_winners_and_promotion_gate(tmp_path: Path):
     assert summary["promotion_gates"]["passed"] is True
     assert (spec.output_dir / "demo-bakeoff_summary.json").exists()
     assert (spec.output_dir / "demo-bakeoff_summary.csv").exists()
+
+
+def test_bakeoff_summary_records_control_provenance(tmp_path: Path):
+    payload = _base_payload(tmp_path)
+    external_source = tmp_path / "external-discovered-pack"
+    _write_json(
+        external_source / "meta.json",
+        {
+            "rank_map": {"blocks.0.attn.q_proj": 4},
+            "alpha_map": {"blocks.0.attn.q_proj": 8.0},
+        },
+    )
+    _add_control_candidates(payload, external_source_pack=str(external_source))
+    payload["candidates"].append(
+        {
+            "id": "target_constant_control",
+            "pack": "demo-target-constant",
+            "mode": "rank_map_json",
+            "rank_map_json": "out/target-constant.json",
+            "control_type": "target_constant",
+            "control_source": "q16-k16-v8",
+            "control_reference_bytes": 12_000,
+            "control_candidate_bytes": 11_900,
+        }
+    )
+    spec = validate_bakeoff_spec(payload, root=tmp_path)
+    pack_metrics = {
+        "fixed_r16": ("demo-r16", 7.0),
+        "fixed_r32": ("demo-r32", 5.0),
+        "dynamic_source": ("demo-dynamic", 6.2),
+        "hetero_map": ("demo-hetero", 5.4),
+        "random_control": ("demo-random-control", 5.1),
+        "shuffled_control": ("demo-shuffled-control", 7.2),
+        "target_constant_control": ("demo-target-constant", 6.8),
+    }
+    for phase in build_bakeoff_plan(spec):
+        if phase.output_path is None:
+            continue
+        if phase.phase == "rank-map":
+            rank_map = {"blocks.0.attn.q_proj": 4}
+            alpha_map = {"blocks.0.attn.q_proj": 8.0}
+            _write_json(phase.output_path, {"rank_map": rank_map, "alpha_map": alpha_map})
+            report_path = Path(phase.command[phase.command.index("--out") + 1])
+            _write_json(
+                report_path,
+                {
+                    "control": phase.command[phase.command.index("rank-map") + 1].replace("-", "_"),
+                    "seed": int(phase.command[phase.command.index("--seed") + 1]),
+                    "reference_summary": {"total_bytes": 12_000},
+                    "normalized_summary": {
+                        "total_bytes": 11_800,
+                        "budget_slack_bytes": 200,
+                    },
+                    "reference_rank_map": rank_map,
+                    "reference_alpha_map": alpha_map,
+                    "rank_map": rank_map,
+                    "alpha_map": alpha_map,
+                },
+            )
+            continue
+        pack, ppl = pack_metrics[phase.candidate_id]
+        if phase.phase == "eval":
+            _write_json(
+                phase.output_path,
+                [
+                    {"pack": None, "perplexity": 10.0, "token_accuracy": 0.5},
+                    {
+                        "pack": pack,
+                        "size_mb": 12.0,
+                        "perplexity": ppl,
+                        "token_accuracy": 0.6,
+                    },
+                ],
+            )
+        elif phase.phase == "rank-ledger":
+            _write_json(
+                phase.output_path,
+                {
+                    "summary": {"declared_rank": 4, "effective_rank": 4, "rank_slack": 0},
+                    "adapters": [
+                        {
+                            "adapter": "blocks.0.attn.q_proj",
+                            "declared_rank": 4,
+                            "alpha": 8.0,
+                        }
+                    ],
+                },
+            )
+        elif phase.phase == "proof":
+            _write_json(phase.output_path, {"status": "passed"})
+
+    summary = build_bakeoff_summary(spec)
+    random_row = next(row for row in summary["rows"] if row["candidate"] == "random_control")
+
+    assert random_row["control_type"] == "random_same_budget"
+    assert random_row["control_source"] == "demo-hetero"
+    assert random_row["control_seed"] == 17
+    assert random_row["control_rank_map"].endswith("random_control_rank_map.json")
+    assert random_row["control_report"].endswith("random_control_rank_map_report.json")
+    assert random_row["control_reference_bytes"] == 12_000
+    assert random_row["control_candidate_bytes"] == 11_800
+    assert random_row["control_budget_slack_bytes"] == 200
+    target_constant_row = next(
+        row for row in summary["rows"] if row["candidate"] == "target_constant_control"
+    )
+    assert target_constant_row["control_type"] == "target_constant"
+    assert target_constant_row["control_source"] == "q16-k16-v8"
+    assert target_constant_row["control_rank_map"] == "out/target-constant.json"
+    assert target_constant_row["control_budget_slack_bytes"] == 100
+    assert summary["winner_quality"] == "fixed_r32"
+    assert summary["promotion_gates"]["require_beats_controls"] is True
+    assert summary["promotion_gates"]["controls_passed"] is False
+    assert any(
+        row["control_type"] == "target_constant"
+        for row in summary["promotion_gates"]["control_comparisons"]
+    )
+    assert summary["promotion_gates"]["passed"] is False
+
+    random_ledger_phase = next(
+        phase
+        for phase in build_bakeoff_plan(spec)
+        if phase.candidate_id == "random_control" and phase.phase == "rank-ledger"
+    )
+    ledger = json.loads(random_ledger_phase.output_path.read_text(encoding="utf-8"))
+    ledger["adapters"][0]["declared_rank"] = 8
+    _write_json(random_ledger_phase.output_path, ledger)
+    with pytest.raises(BakeoffError, match="does not match its generated rank map"):
+        build_bakeoff_summary(spec)
+    ledger["adapters"][0]["declared_rank"] = 4
+    _write_json(random_ledger_phase.output_path, ledger)
+
+    random_phase = next(
+        phase
+        for phase in build_bakeoff_plan(spec)
+        if phase.candidate_id == "random_control" and phase.phase == "rank-map"
+    )
+    report_path = Path(random_phase.command[random_phase.command.index("--out") + 1])
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["seed"] = 999
+    _write_json(report_path, report)
+    with pytest.raises(BakeoffError, match="stale or mismatched seed"):
+        build_bakeoff_summary(spec)

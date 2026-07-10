@@ -55,17 +55,17 @@ def stable_rank(A: ArrayLike, eps: float = 1e-6) -> float:
     return float(fro2 / (top * top + float(eps)))
 
 
-def theorem_guided_rank(
+def gram_energy_rank(
     A: ArrayLike,
     target_compression: float = 0.9,
     eps: float = 1e-6,
     tol: float = 1.0,
 ) -> Tuple[int, float]:
-    """Select a rank from MLX spectral energy and reconstruction residual."""
+    """Select a rank from Gram-matrix spectral energy and reconstruction residual."""
 
     data = _to_mx_f32(A)
     if len(data.shape) != 2 or data.shape[0] != data.shape[1]:
-        raise ValueError("theorem_guided_rank expects a square 2D matrix")
+        raise ValueError("gram_energy_rank expects a square 2D matrix")
 
     U, singulars, Vh = mx.linalg.svd(data, stream=CPU_DEVICE)
     full = min(int(data.shape[0]), int(data.shape[1]))
@@ -83,12 +83,28 @@ def theorem_guided_rank(
     return r, float(residual)
 
 
+def theorem_guided_rank(
+    A: ArrayLike,
+    target_compression: float = 0.9,
+    eps: float = 1e-6,
+    tol: float = 1.0,
+) -> Tuple[int, float]:
+    """Legacy alias for :func:`gram_energy_rank`.
+
+    The selector is a spectral-energy heuristic over a square Gram matrix; it
+    does not implement or validate Pop's matrix-polynomial rank theorem.
+    """
+
+    return gram_energy_rank(A, target_compression, eps, tol)
+
+
 def _energy_rank(A: ArrayLike, target_compression: float) -> int:
     data = _to_mx_f32(A)
     if len(data.shape) != 2:
         raise ValueError("_energy_rank expects a 2D matrix")
     _, singulars, _ = mx.linalg.svd(data, stream=CPU_DEVICE)
-    return _first_energy_rank(singulars, target_compression, min(int(data.shape[0]), int(data.shape[1])))
+    full_rank = min(int(data.shape[0]), int(data.shape[1]))
+    return _first_energy_rank(singulars, target_compression, full_rank)
 
 
 def choose_rank(
@@ -102,6 +118,6 @@ def choose_rank(
     if strategy == "stable":
         r = _energy_rank(A, target_compression)
         return r, -1.0
-    if strategy == "theorem":
-        return theorem_guided_rank(A, target_compression, eps)
+    if strategy in {"gram_energy", "theorem"}:
+        return gram_energy_rank(A, target_compression, eps)
     raise ValueError(f"Unknown strategy: {strategy}")

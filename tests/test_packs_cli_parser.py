@@ -21,6 +21,42 @@ def test_create_parser_accepts_rank_strategy():
     assert args.rank_strategy == "stable"
 
 
+def test_create_parser_defaults_to_gram_energy_rank_strategy():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "create",
+            "--name",
+            "demo",
+            "--base",
+            "mlx-community/gemma-4-12B-mxfp8",
+            "--data",
+            "data/domain_prompts.jsonl",
+        ]
+    )
+
+    assert args.rank_strategy == "gram_energy"
+
+
+def test_create_parser_keeps_legacy_theorem_rank_strategy_alias():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "create",
+            "--name",
+            "demo",
+            "--base",
+            "mlx-community/gemma-4-12B-mxfp8",
+            "--data",
+            "data/domain_prompts.jsonl",
+            "--rank-strategy",
+            "theorem",
+        ]
+    )
+
+    assert args.rank_strategy == "theorem"
+
+
 def test_create_parser_keeps_lite_projection_default():
     parser = build_parser()
     args = parser.parse_args(

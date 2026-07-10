@@ -8,6 +8,7 @@ __all__ = [
     "svd_lowrank",
     "quantize_factors",
     "dequantize_factors",
+    "gram_energy_rank",
     "theorem_guided_rank",
     "PlasticityManager",
     "quantise",
@@ -43,10 +44,14 @@ def __getattr__(name: str):
             "quantize_factors": quantize_factors,
             "dequantize_factors": dequantize_factors,
         }[name]
-    if name in {"stable_rank", "theorem_guided_rank"}:
-        from .rank_select import stable_rank, theorem_guided_rank
+    if name in {"stable_rank", "gram_energy_rank", "theorem_guided_rank"}:
+        from .rank_select import gram_energy_rank, stable_rank, theorem_guided_rank
 
-        return {"stable_rank": stable_rank, "theorem_guided_rank": theorem_guided_rank}[name]
+        return {
+            "stable_rank": stable_rank,
+            "gram_energy_rank": gram_energy_rank,
+            "theorem_guided_rank": theorem_guided_rank,
+        }[name]
     if name in {"quantise", "dequantise", "set_seed", "get_logger"}:
         from .utils import dequantise, get_logger, quantise, set_seed
 

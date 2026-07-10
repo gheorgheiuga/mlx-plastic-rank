@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 
 import mlx.core as mx
 import mlx.nn as nn
 
-from .dataset import sample_minibatch, sample_supervised_minibatch
+from .batch_schedule import (
+    MinibatchSchedule,
+    generate_minibatch_schedule,
+    load_or_create_minibatch_schedule,
+)
 from .manager import LoRAManager
 
 
@@ -27,6 +32,45 @@ class TrainingConfig:
     dynamic_rank_grow_threshold: float = 0.25
     dynamic_rank_prune_threshold: float = 0.03
     dynamic_rank_allowed_ranks: tuple[int, ...] = ()
+    batch_seed: int = 42
+    training_seed: int = 42
+    batch_schedule: MinibatchSchedule | None = None
+    batch_schedule_path: Path | str | None = None
+    dataset_fingerprint: str | None = None
+    resolved_batch_schedule_digest: str | None = field(init=False, default=None)
+
+    def resolve_batch_schedule(self, *, dataset_size: int) -> MinibatchSchedule:
+        """Return one schedule isolated from adapter and dropout RNG state."""
+
+        if self.batch_schedule is not None and self.batch_schedule_path is not None:
+            raise ValueError("Set batch_schedule or batch_schedule_path, not both")
+        if self.batch_schedule is not None:
+            self.batch_schedule.validate_for(
+                dataset_size=dataset_size,
+                batch_size=self.batch_size,
+                steps=self.steps,
+                dataset_fingerprint=self.dataset_fingerprint,
+            )
+            schedule = self.batch_schedule
+        elif self.batch_schedule_path is not None:
+            schedule = load_or_create_minibatch_schedule(
+                self.batch_schedule_path,
+                dataset_size=dataset_size,
+                batch_size=self.batch_size,
+                steps=self.steps,
+                seed=self.batch_seed,
+                dataset_fingerprint=self.dataset_fingerprint,
+            )
+        else:
+            schedule = generate_minibatch_schedule(
+                dataset_size=dataset_size,
+                batch_size=self.batch_size,
+                steps=self.steps,
+                seed=self.batch_seed,
+                dataset_fingerprint=self.dataset_fingerprint,
+            )
+        self.resolved_batch_schedule_digest = schedule.digest
+        return schedule
 
 
 def extract_logits(output):
@@ -61,19 +105,23 @@ def train_lora(
         raise ValueError("No LoRA parameters initialised for training")
 
     manager.set_dropout(config.lora_dropout)
+    schedule = config.resolve_batch_schedule(dataset_size=int(dataset.shape[0]))
+    current_batch: mx.array
 
     def loss_fn(param_arrays: list[mx.array]) -> mx.array:
         manager.set_trainable_parameters(param_arrays)
-        batch = sample_minibatch(dataset, config.batch_size)
-        inputs = batch[:, :-1]
-        targets = batch[:, 1:]
+        inputs = current_batch[:, :-1]
+        targets = current_batch[:, 1:]
         logits = model_logits(model, inputs)
         loss = nn.losses.cross_entropy(logits, targets).mean()
         return loss
 
     param_arrays = params
     start = time.time()
+    mx.random.seed(config.training_seed)
     for step in range(1, config.steps + 1):
+        batch_indices = mx.array(schedule.batch(step - 1), dtype=mx.int32)
+        current_batch = dataset[batch_indices]
         loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
         param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
         manager.set_trainable_parameters(param_arrays)
@@ -99,13 +147,15 @@ def train_lora_supervised(
         raise ValueError("No LoRA parameters initialised for training")
 
     manager.set_dropout(config.lora_dropout)
+    schedule = config.resolve_batch_schedule(dataset_size=int(tokens.shape[0]))
+    current_tokens: mx.array
+    current_masks: mx.array
 
     def loss_fn(param_arrays: list[mx.array]) -> mx.array:
         manager.set_trainable_parameters(param_arrays)
-        batch_tokens, batch_masks = sample_supervised_minibatch(tokens, masks, config.batch_size)
-        inputs = batch_tokens[:, :-1]
-        targets = batch_tokens[:, 1:]
-        target_mask = batch_masks[:, 1:]
+        inputs = current_tokens[:, :-1]
+        targets = current_tokens[:, 1:]
+        target_mask = current_masks[:, 1:]
         logits = model_logits(model, inputs)
         token_losses = nn.losses.cross_entropy(logits, targets, reduction="none")
         denom = mx.sum(target_mask) + 1e-8
@@ -113,7 +163,11 @@ def train_lora_supervised(
 
     param_arrays = params
     start = time.time()
+    mx.random.seed(config.training_seed)
     for step in range(1, config.steps + 1):
+        batch_indices = mx.array(schedule.batch(step - 1), dtype=mx.int32)
+        current_tokens = tokens[batch_indices]
+        current_masks = masks[batch_indices]
         loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
         param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
         manager.set_trainable_parameters(param_arrays)

@@ -9,7 +9,7 @@ import math
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Mapping, Sequence, cast
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -23,7 +23,12 @@ from .ablation import (
 )
 from .bakeoff import BakeoffError, bakeoff_plan_payload, load_bakeoff_spec, run_bakeoff
 from .capabilities import capability_report, missing_capabilities
-from .dataset import build_supervised_token_dataset, build_token_dataset, load_jsonl_texts
+from .dataset import (
+    SupervisedDatasetCoverage,
+    build_supervised_token_dataset_with_coverage,
+    build_token_dataset,
+    load_jsonl_texts,
+)
 from .device_profiles import (
     DeviceProfileError,
     build_memory_ledger,
@@ -272,11 +277,13 @@ def _evaluate_supervised_perplexity(
     tokens: mx.array,
     masks: mx.array,
     batch_size: int,
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     if tokens.shape[0] == 0:
         raise ValueError("Dataset is empty")
     mx.reset_peak_memory()
-    all_losses: List[mx.array] = []
+    example_loss_sums: list[float] = []
+    example_token_counts: list[int] = []
+    example_correct_counts: list[int] = []
     first_token_ms: float | None = None
     start_time = time.time()
     total_tokens = 0.0
@@ -288,27 +295,71 @@ def _evaluate_supervised_perplexity(
         target_mask = mask[:, 1:]
         losses = nn.losses.cross_entropy(logits, batch[:, 1:], reduction="none")
         masked_losses = losses * target_mask
-        mx.eval(masked_losses)
+        predictions = mx.argmax(logits, axis=-1)
+        masked_correct = mx.equal(predictions, batch[:, 1:]).astype(mx.float32) * target_mask
         if first_token_ms is None:
             first_token_ms = (time.time() - step_start) * 1000.0
-        all_losses.append(masked_losses.flatten())
-        total_tokens += float(mx.sum(target_mask).item())
+        batch_loss_sums = mx.sum(masked_losses, axis=1)
+        batch_token_counts = mx.sum(target_mask, axis=1)
+        batch_correct_counts = mx.sum(masked_correct, axis=1)
+        mx.eval(batch_loss_sums, batch_token_counts, batch_correct_counts)
+        loss_values = cast(list[float], batch_loss_sums.tolist())
+        token_values = cast(list[float], batch_token_counts.tolist())
+        correct_values = cast(list[float], batch_correct_counts.tolist())
+        example_loss_sums.extend(float(value) for value in loss_values)
+        example_token_counts.extend(int(value) for value in token_values)
+        example_correct_counts.extend(int(value) for value in correct_values)
+        total_tokens += float(mx.sum(batch_token_counts).item())
     total_time = time.time() - start_time
-    losses_concat = mx.concatenate(all_losses)
     denom = max(total_tokens, 1.0)
-    mean_loss = float(mx.sum(losses_concat).item()) / denom
+    mean_loss = sum(example_loss_sums) / denom
     ppl = math.exp(mean_loss)
+    ppl_se = _clustered_perplexity_se(
+        example_loss_sums,
+        example_token_counts,
+        mean_loss=mean_loss,
+        perplexity=ppl,
+    )
     vram_peak = mx.get_peak_memory() / (1024**3)
     tps = total_tokens / max(total_time, 1e-6)
+    token_accuracy = sum(example_correct_counts) / denom
     return {
         "ppl": float(ppl),
-        "ppl_se": 0.0,
+        "ppl_se": float(ppl_se),
+        "ppl_se_method": "example_cluster_delta",
         "tps": float(tps),
         "first_token_ms": float(first_token_ms or 0.0),
         "vram_peak": float(vram_peak),
         "eval_time_s": float(total_time),
         "tokens": int(total_tokens),
+        "token_accuracy": float(token_accuracy),
+        "example_loss_sums": example_loss_sums,
+        "example_token_counts": example_token_counts,
+        "example_correct_counts": example_correct_counts,
     }
+
+
+def _clustered_perplexity_se(
+    example_loss_sums: Sequence[float],
+    example_token_counts: Sequence[int],
+    *,
+    mean_loss: float,
+    perplexity: float,
+) -> float:
+    """Estimate PPL uncertainty while treating each source row as one cluster."""
+
+    if len(example_loss_sums) != len(example_token_counts):
+        raise ValueError("Example loss and token-count vectors must have equal length")
+    clusters = len(example_loss_sums)
+    total_tokens = float(sum(example_token_counts))
+    if clusters <= 1 or total_tokens <= 0.0:
+        return 0.0
+    residual_ss = sum(
+        (float(loss_sum) - mean_loss * int(token_count)) ** 2
+        for loss_sum, token_count in zip(example_loss_sums, example_token_counts)
+    )
+    loss_se = math.sqrt((clusters / (clusters - 1.0)) * residual_ss) / total_tokens
+    return float(perplexity * loss_se)
 
 PACK_ROOT = Path("packs")
 
@@ -514,6 +565,19 @@ def cmd_create(args: argparse.Namespace) -> None:
                 adapter.A = mx.zeros_like(adapter.A)
                 adapter.B = mx.zeros_like(adapter.B)
 
+    data_path = Path(args.data)
+    batch_seed = int(args.seed if args.batch_seed is None else args.batch_seed)
+    training_seed = int(args.seed if args.training_seed is None else args.training_seed)
+    dataset_fingerprint = ";".join(
+        [
+            f"sha256={compute_sha256(data_path)}",
+            f"base={base_ref}",
+            f"loader={args.loader}",
+            f"loss_mode={args.loss_mode}",
+            f"chat_template={int(bool(args.chat_template))}",
+            f"sequence_length={int(args.sequence_length)}",
+        ]
+    )
     config = TrainingConfig(
         steps=args.steps,
         batch_size=args.batch_size,
@@ -528,15 +592,20 @@ def cmd_create(args: argparse.Namespace) -> None:
         dynamic_rank_grow_threshold=args.dynamic_grow_threshold,
         dynamic_rank_prune_threshold=args.dynamic_prune_threshold,
         dynamic_rank_allowed_ranks=allowed_ranks,
+        batch_seed=batch_seed,
+        training_seed=training_seed,
+        batch_schedule_path=Path(args.batch_schedule) if args.batch_schedule else None,
+        dataset_fingerprint=dataset_fingerprint,
     )
     print(
         f"Training LoRA adapters: steps={config.steps} batch_size={config.batch_size} "
         f"lr={config.learning_rate} loss_mode={args.loss_mode}"
     )
     training_samples = 0
+    training_coverage: SupervisedDatasetCoverage | None = None
     if args.loss_mode == "answer":
-        tokens, masks = build_supervised_token_dataset(
-            Path(args.data),
+        tokens, masks, training_coverage = build_supervised_token_dataset_with_coverage(
+            data_path,
             tokenizer,
             args.sequence_length,
             chat_template=args.chat_template,
@@ -544,11 +613,14 @@ def cmd_create(args: argparse.Namespace) -> None:
         training_samples = int(tokens.shape[0])
         final_loss = train_lora_supervised(manager, model, tokens, masks, config)
     else:
-        texts = load_jsonl_texts(Path(args.data), tokenizer, args.chat_template)
+        texts = load_jsonl_texts(data_path, tokenizer, args.chat_template)
         dataset = build_token_dataset(texts, tokenizer, args.sequence_length)
         training_samples = int(dataset.shape[0])
         final_loss = train_lora(manager, model, dataset, config)
-    print(f"Training complete. Final loss={final_loss:.4f}")
+    print(
+        f"Training complete. Final loss={final_loss:.4f} "
+        f"batch_schedule={config.resolved_batch_schedule_digest}"
+    )
 
     tensors, metadata = manager.export_active_pack(
         args.name,
@@ -556,7 +628,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         notes=args.notes,
         profile=args.profile,
     )
-    metadata.training_data = str(Path(args.data))
+    metadata.training_data = str(data_path)
     metadata.training_config = {
         "loss_mode": args.loss_mode,
         "chat_template": bool(args.chat_template),
@@ -565,6 +637,11 @@ def cmd_create(args: argparse.Namespace) -> None:
         "learning_rate": float(args.learning_rate),
         "sequence_length": int(args.sequence_length),
         "seed": int(args.seed),
+        "batch_seed": batch_seed,
+        "training_seed": training_seed,
+        "batch_schedule": str(args.batch_schedule) if args.batch_schedule else None,
+        "batch_schedule_digest": config.resolved_batch_schedule_digest,
+        "dataset_fingerprint": dataset_fingerprint,
         "profile": args.profile,
         "layers": canonical_layers,
         "rank": args.rank,
@@ -578,6 +655,8 @@ def cmd_create(args: argparse.Namespace) -> None:
         "training_samples": training_samples,
         "final_loss": float(final_loss),
     }
+    if training_coverage is not None:
+        metadata.training_config["dataset_coverage"] = training_coverage.as_metrics()
     tensor_path = pack_dir / "pack.safetensors"
     meta_path = pack_dir / "meta.json"
     save_pack(tensors, tensor_path)
@@ -1318,11 +1397,12 @@ def cmd_eval(args: argparse.Namespace) -> None:
     data_path = args.data_path
 
     dataset_cached: mx.array | tuple[mx.array, mx.array] | None = None
+    dataset_coverage_cached: SupervisedDatasetCoverage | None = None
     dataset_type: str | None = None
     base_logits_sample: mx.array | None = None
 
     def evaluate(model_ref: str, pack_dir: Path | None = None) -> dict:
-        nonlocal dataset_cached, dataset_type, base_logits_sample
+        nonlocal dataset_cached, dataset_coverage_cached, dataset_type, base_logits_sample
         start_load = time.time()
         base_checkpoint = _resolve_base_checkpoint(model_ref)
         model, tokenizer = _load_base_model(model_ref, args.loader)
@@ -1341,15 +1421,13 @@ def cmd_eval(args: argparse.Namespace) -> None:
             path_obj = Path(data_path)
             if path_obj.exists() and path_obj.is_file():
                 if args.loss_mode == "answer":
-                    tokens, masks = build_supervised_token_dataset(
+                    tokens, masks, dataset_coverage_cached = build_supervised_token_dataset_with_coverage(
                         path_obj,
                         tokenizer,
                         args.sequence_length,
                         chat_template=args.chat_template,
+                        max_samples=args.num_samples if args.num_samples > 0 else None,
                     )
-                    if args.num_samples > 0:
-                        tokens = tokens[: args.num_samples]
-                        masks = masks[: args.num_samples]
                     dataset_cached = (tokens, masks)
                     dataset_type = "jsonl-answer"
                 else:
@@ -1396,7 +1474,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
             diff = mx.abs(logits - base_logits_sample)
             max_diff = float(mx.max(diff).item())
 
-        token_accuracy = None
+        token_accuracy = metrics.get("token_accuracy")
         if dataset_type == "jsonl":
             assert cached_dataset is not None and not isinstance(cached_dataset, tuple)
             correct = 0.0
@@ -1413,27 +1491,8 @@ def cmd_eval(args: argparse.Namespace) -> None:
                 total += int(targets.size)
             if total > 0:
                 token_accuracy = correct / float(total)
-        elif dataset_type == "jsonl-answer":
-            assert isinstance(cached_dataset, tuple)
-            tokens, masks = cached_dataset
-            correct = 0.0
-            total_answer = 0.0
-            for start_idx in range(0, tokens.shape[0], args.batch_size):
-                batch_tokens = tokens[start_idx : start_idx + args.batch_size]
-                batch_masks = masks[start_idx : start_idx + args.batch_size]
-                if batch_tokens.shape[0] == 0:
-                    continue
-                inputs = batch_tokens[:, :-1]
-                targets = batch_tokens[:, 1:]
-                target_mask = batch_masks[:, 1:]
-                preds = mx.argmax(model_logits(model, inputs), axis=-1)
-                matches = mx.equal(preds, targets).astype(mx.float32) * target_mask
-                correct += float(mx.sum(matches).item())
-                total_answer += float(mx.sum(target_mask).item())
-            if total_answer > 0:
-                token_accuracy = correct / total_answer
 
-        return {
+        result = {
             "model": model_ref,
             "pack": pack_name,
             "pack_size_bytes": pack_size,
@@ -1448,6 +1507,14 @@ def cmd_eval(args: argparse.Namespace) -> None:
             "token_accuracy": token_accuracy,
             "loss_mode": args.loss_mode,
         }
+        if dataset_type == "jsonl-answer":
+            assert dataset_coverage_cached is not None
+            result.update(dataset_coverage_cached.as_metrics())
+            result["ppl_se_method"] = metrics["ppl_se_method"]
+            result["example_loss_sums"] = metrics["example_loss_sums"]
+            result["example_token_counts"] = metrics["example_token_counts"]
+            result["example_correct_counts"] = metrics["example_correct_counts"]
+        return result
 
     base_metrics = evaluate(str(args.base), None)
     results = [base_metrics]
@@ -1471,8 +1538,14 @@ def cmd_eval(args: argparse.Namespace) -> None:
 
     if args.csv:
         csv_path = Path(args.csv)
+        json_only_fields = {
+            "example_loss_sums",
+            "example_token_counts",
+            "example_correct_counts",
+        }
+        fieldnames = [key for key in results[0] if key not in json_only_fields]
         with csv_path.open("w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(results[0].keys()))
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             for row in results:
                 writer.writerow(row)
@@ -1698,9 +1771,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create.add_argument(
         "--rank-strategy",
-        choices=["stable", "theorem"],
-        default="theorem",
-        help="Rank selection strategy for automatic LoRA rank selection",
+        choices=["stable", "gram_energy", "theorem"],
+        default="gram_energy",
+        help=(
+            "Automatic LoRA rank heuristic. 'gram_energy' is the preferred name; "
+            "'theorem' is a legacy alias."
+        ),
     )
     create.add_argument(
         "--target-compression",
@@ -1712,7 +1788,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--rank-eps",
         type=float,
         default=1e-6,
-        help="Tolerance for theorem-guided rank selection",
+        help="Numerical tolerance for Gram-energy rank selection",
     )
     create.add_argument("--data", required=True)
     create.add_argument(
@@ -1731,6 +1807,23 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--learning-rate", "--lr", dest="learning_rate", type=float, default=1e-4)
     create.add_argument("--sequence-length", type=int, default=128)
     create.add_argument("--seed", type=int, default=42)
+    create.add_argument(
+        "--batch-seed",
+        type=int,
+        help="Seed for the isolated minibatch schedule; defaults to --seed.",
+    )
+    create.add_argument(
+        "--training-seed",
+        type=int,
+        help="Seed reset immediately before training for paired dropout; defaults to --seed.",
+    )
+    create.add_argument(
+        "--batch-schedule",
+        help=(
+            "Load or create a shared JSON minibatch-index schedule so candidates see "
+            "identical examples in identical order."
+        ),
+    )
     create.add_argument(
         "--rank",
         type=_parse_rank,

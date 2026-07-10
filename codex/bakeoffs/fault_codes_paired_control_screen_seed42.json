@@ -1,0 +1,147 @@
+{
+  "kind": "pack_bakeoff_spec",
+  "name": "fault_codes_paired_control_screen_seed42",
+  "domain": "industrial-fault-codes",
+  "base": "mlx-community/gemma-4-12B-it-qat-mxfp8",
+  "loader": "mlx-vlm",
+  "train_data": "data/fault_codes_train_full2700.jsonl",
+  "eval_data": "data/fault_codes_eval_full300.jsonl",
+  "output_dir": "out/fault_codes_paired_control_screen_seed42",
+  "layers": "attn.q_proj,attn.k_proj,attn.v_proj",
+  "profile": "heavy",
+  "metadata": {
+    "purpose": "One-seed falsification screen for whether the discovered allocation beats same-budget controls.",
+    "dataset": "avneetsingla/industrial-fault-codes-sample",
+    "dataset_license": "CC BY-NC 4.0",
+    "cached_base_snapshot": "d8989284106d7dffb71f00823961d5e9220729cd",
+    "evidence_status": "diagnostic kill screen; not confirmatory multi-seed evidence",
+    "reference_tensor_budget_bytes": 24846880,
+    "evidence_snapshot": "codex/evidence/fault_codes_paired_control_screen_seed42.json"
+  },
+  "train": {
+    "steps": 600,
+    "batch_size": 1,
+    "learning_rate": 5e-5,
+    "sequence_length": 256,
+    "seed": 42,
+    "batch_seed": 42001,
+    "training_seed": 42002,
+    "batch_schedule": "out/fault_codes_paired_control_screen_seed42/shared_batch_schedule.json",
+    "loss_mode": "answer",
+    "chat_template": true,
+    "lora_dropout": 0.05
+  },
+  "eval": {
+    "num_samples": 300,
+    "batch_size": 4,
+    "sequence_length": 256,
+    "loss_mode": "answer",
+    "chat_template": true
+  },
+  "proof": {
+    "require_ledger": true,
+    "fail_on_regression": false,
+    "min_ppl_improvement_pct": 0.0,
+    "min_token_accuracy_gain": 0.0
+  },
+  "promotion_gates": {
+    "retain_fixed_r32_improvement": 0.9,
+    "max_fixed_r32_size_ratio": 0.6,
+    "require_beats_controls": true,
+    "min_control_ppl_advantage_pct": 0.0,
+    "min_random_controls_beaten": 4,
+    "require_all_structured_controls": true,
+    "require_paired_ci": true,
+    "paired_bootstrap_resamples": 5000,
+    "paired_bootstrap_seed": 42
+  },
+  "candidates": [
+    {
+      "id": "fixed_r16_context",
+      "pack": "fault-codes-gemma4-it-answer-r16-full2700-600",
+      "mode": "fixed_rank",
+      "rank": 16,
+      "small_reference": true,
+      "notes": "Existing unpaired contextual anchor; not part of the causal control screen."
+    },
+    {
+      "id": "fixed_r32_context",
+      "pack": "fault-codes-gemma4-it-answer-r32-full2700-600",
+      "mode": "fixed_rank",
+      "rank": 32,
+      "quality_reference": true,
+      "notes": "Existing unpaired contextual quality ceiling; not part of the causal control screen."
+    },
+    {
+      "id": "discovered_paired_600",
+      "pack": "fault-codes-paired-s42-discovered-map-600",
+      "mode": "rank_map_json",
+      "rank_map_json": "codex/bakeoffs/rank_maps/fault_codes_discovered_map.json",
+      "tradeoff_candidate": true,
+      "notes": "Fresh weights from the previously discovered fault-code rank map on the shared paired schedule."
+    },
+    {
+      "id": "random_seed17_paired_600",
+      "pack": "fault-codes-paired-s42-random-budget-seed17-600",
+      "mode": "random_same_budget",
+      "control_source_candidate": "discovered_paired_600",
+      "control_seed": 17
+    },
+    {
+      "id": "random_seed19_paired_600",
+      "pack": "fault-codes-paired-s42-random-budget-seed19-600",
+      "mode": "random_same_budget",
+      "control_source_candidate": "discovered_paired_600",
+      "control_seed": 19
+    },
+    {
+      "id": "random_seed23_paired_600",
+      "pack": "fault-codes-paired-s42-random-budget-seed23-600",
+      "mode": "random_same_budget",
+      "control_source_candidate": "discovered_paired_600",
+      "control_seed": 23
+    },
+    {
+      "id": "random_seed29_paired_600",
+      "pack": "fault-codes-paired-s42-random-budget-seed29-600",
+      "mode": "random_same_budget",
+      "control_source_candidate": "discovered_paired_600",
+      "control_seed": 29
+    },
+    {
+      "id": "random_seed31_paired_600",
+      "pack": "fault-codes-paired-s42-random-budget-seed31-600",
+      "mode": "random_same_budget",
+      "control_source_candidate": "discovered_paired_600",
+      "control_seed": 31
+    },
+    {
+      "id": "shuffled_seed17_paired_600",
+      "pack": "fault-codes-paired-s42-shuffled-map-seed17-600",
+      "mode": "shuffled_discovered",
+      "control_source_candidate": "discovered_paired_600",
+      "control_seed": 17
+    },
+    {
+      "id": "target_constant_paired_600",
+      "pack": "fault-codes-paired-s42-target-constant-q16-k16-v8-600",
+      "mode": "rank_map_json",
+      "rank_map_json": "codex/bakeoffs/rank_maps/fault_codes_target_constant_q16_k16_v8.json",
+      "control_type": "target_constant",
+      "control_source": "q16-k16-v8 on every layer",
+      "control_reference_bytes": 24846880,
+      "control_candidate_bytes": 24609312
+    },
+    {
+      "id": "sql_map_transplant_paired_600",
+      "pack": "fault-codes-paired-s42-sql-map-normalized-600",
+      "mode": "rank_map_json",
+      "rank_map_json": "codex/bakeoffs/rank_maps/text_to_sql_normalized_to_fault_budget.json",
+      "control_type": "cross_domain_normalized",
+      "control_source": "text-to-sql discovered map normalized to fault-code byte budget",
+      "control_report": "codex/bakeoffs/rank_maps/text_to_sql_normalized_to_fault_budget_report.json",
+      "control_reference_bytes": 24846880,
+      "control_candidate_bytes": 24834592
+    }
+  ]
+}

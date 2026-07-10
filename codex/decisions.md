@@ -19,6 +19,7 @@
 - **Status:** Accepted
 - **Context:** Global SVD compression hurt perplexity, pushing the team toward reversible, modular adapters that keep base checkpoints intact.
 - **Decision:** Wrap fused attention slices with `LoRAFusedLinear`, exporting packs as `.lora.{A,B}` (fp16) plus `alpha` (fp32). Enforce size ≤10 MB, alpha = 2r, and one active pack at a time through the `packs` CLI.
+- **Implementation update (2026-07-09):** Pack application now rejects incompatible base-model identifiers unless checkpoint hashes establish equivalence, verifies scalar fp32 alpha tensors against metadata, and stages a replacement fully before detaching the active pack.
 - **Consequences:** Packs stay small (≈O(r·hidden·layers)), adapters swap at runtime, and evaluation tooling now reports PPL deltas, load time, and memory metrics. Path-B delta exports will reuse the same schema.
 
 ## ADR-0004 — Gemma 4 Industrial Pack Pilot
@@ -64,8 +65,20 @@
 
 ## ADR-0009 — Reproducible Pack Bakeoff Workflow
 - **Date:** 2026-06-10
-- **Status:** Accepted as orchestration workflow; replication evidence pending
+- **Status:** Accepted as orchestration workflow; local replication passed, paired controls pending
 - **DSN:** `codex/dsn/dsn-20260610-pack-bakeoff-workflow.md`
 - **Context:** The proof path was useful but still required hand-running multiple commands and reading ignored local artifacts.
 - **Decision:** Add `packs bakeoff --spec` to orchestrate create/eval/rank-ledger/proof phases from JSON specs, commit compact evidence snapshots under `codex/evidence/`, and use Apache-2.0 `gretelai/synthetic_text_to_sql` as the next large replication dataset.
-- **Consequences:** The repo can now reproduce the fault-code comparison and launch a second-dataset bakeoff from reviewable specs. This accepts the workflow and evidence hygiene, not a broader Pop Rank theorem or cross-domain quality claim.
+- **Implementation update (2026-07-09):** Bakeoff specs can now generate seeded `random_same_budget` and `shuffled_discovered` controls in resumable rank-map preflight phases, preserve their provenance in summaries, and require the tradeoff candidate to beat included controls before promotion. Fixed batch schedules, separate training/dropout seeds, per-example metrics, and paired bootstrap intervals make those comparisons auditable.
+- **Evidence update:** The original 10,000-row Text-to-SQL replication completed: its fresh heterogeneous map reached PPL 1.7600 at 23.92 MB, retained 94.05% of the fixed-r32 gain at 44.16% of its size, and passed the original promotion gate. The newly added random/shuffled candidates have not yet run under a paired schedule.
+- **Consequences:** The repo now has quality-positive local results on fault codes and Text-to-SQL. This accepts the workflow and evidence hygiene, not a broader Pop Rank theorem or domain-specific quality claim.
+
+## ADR-0010 — Paired Rank-Placement Falsification Screen
+- **Date:** 2026-07-09
+- **Status:** Accepted as diagnostic single-seed evidence; confirmatory replication pending
+- **Spec:** `codex/bakeoffs/fault_codes_paired_control_screen_seed42.json`
+- **Evidence:** `codex/evidence/fault_codes_paired_control_screen_seed42.json`
+- **Context:** The earlier heterogeneous-map win did not isolate rank placement from initialization, minibatch order, dropout, rank histogram, simple projection rules, or transferable cross-domain structure.
+- **Decision:** Treat rank-placement benefit as promotable only when a fresh discovered-map run shares its stochastic schedule with controls, beats at least four of five same-budget random maps, beats all declared structured controls, and each paired 95% bootstrap interval excludes zero.
+- **Result:** The fault-code map passed: PPL 5.8532 at 23.73 MB, 97.05% of the contextual fixed-r32 gain at 43.82% of its size. It beat 5/5 random maps, an exact-budget shuffled map, `q16/k16/v8`, and a normalized Text-to-SQL transplant. The cross-domain margin was only 1.12% (PPL difference -0.0662, 95% CI [-0.0849, -0.0485]).
+- **Consequences:** Same-budget rank placement is a real local signal. Domain specificity is only weakly supported because the transplanted map nearly matched it; the next confirmatory test is a multi-seed domain-by-map transfer matrix. This result does not validate Pop's matrix-polynomial theorem.

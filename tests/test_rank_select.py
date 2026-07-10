@@ -29,6 +29,26 @@ def test_theorem_guided_identity_exact():
     assert res <= 1e-6
 
 
+def test_gram_energy_rank_matches_legacy_theorem_alias():
+    rank_select = importlib.import_module("mlx_plastic_rank.rank_select")
+    matrix = mx.array([[2.0, 0.0], [0.0, 0.5]])
+
+    current = rank_select.gram_energy_rank(matrix, target_compression=0.8)
+    legacy = rank_select.theorem_guided_rank(matrix, target_compression=0.8)
+
+    assert current == legacy
+
+
+def test_choose_rank_accepts_gram_energy_strategy():
+    rank_select = importlib.import_module("mlx_plastic_rank.rank_select")
+    matrix = mx.array([[2.0, 0.0], [0.0, 0.5]])
+
+    current = rank_select.choose_rank(matrix, 0.8, strategy="gram_energy")
+    legacy = rank_select.choose_rank(matrix, 0.8, strategy="theorem")
+
+    assert current == legacy
+
+
 def test_theorem_guided_lowrank_random():
     rank_select = importlib.import_module("mlx_plastic_rank.rank_select")
     # Make a low-rank matrix A = U @ V with rank k

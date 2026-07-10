@@ -6,6 +6,7 @@ import pytest
 
 from mlx_plastic_rank.packs.dataset import (
     build_supervised_token_dataset,
+    build_supervised_token_dataset_with_coverage,
     load_jsonl_texts,
     render_chat_text,
 )
@@ -107,3 +108,68 @@ def test_build_supervised_token_dataset_uses_chat_prompt_boundary(tmp_path: Path
     )
 
     assert np.array(masks[0]).sum() > 0.0
+
+
+def test_supervised_dataset_coverage_reports_exclusions_and_truncation(tmp_path: Path):
+    path = tmp_path / "coverage.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps({"prompt": "p", "answer": "ok"}),
+                json.dumps({"prompt": "x" * 20, "answer": "late"}),
+                json.dumps({"prompt": "p", "answer": "abcdef"}),
+                json.dumps({"text": "not supervised"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    tokens, masks, coverage = build_supervised_token_dataset_with_coverage(
+        path,
+        TemplateTokenizer(),
+        20,
+    )
+
+    assert tokens.shape == (2, 20)
+    assert int(np.array(masks).sum()) == 5
+    assert coverage.as_metrics() == {
+        "source_rows": 4,
+        "included_rows": 2,
+        "excluded_rows": 2,
+        "invalid_rows": 1,
+        "answer_outside_sequence_rows": 1,
+        "sample_limited_rows": 0,
+        "truncated_included_rows": 1,
+        "reference_answer_tokens_total": 12,
+        "reference_answer_tokens_retained": 5,
+        "reference_answer_token_retention": 5 / 12,
+    }
+
+
+def test_supervised_dataset_coverage_accounts_for_sample_limit(tmp_path: Path):
+    path = tmp_path / "sample_limit.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps({"prompt": "one", "answer": "aa"}),
+                json.dumps({"prompt": "two", "answer": "bbb"}),
+                json.dumps({"text": "not supervised"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _, _, coverage = build_supervised_token_dataset_with_coverage(
+        path,
+        TemplateTokenizer(),
+        64,
+        max_samples=1,
+    )
+
+    assert coverage.source_rows == 3
+    assert coverage.included_rows == 1
+    assert coverage.excluded_rows == 2
+    assert coverage.invalid_rows == 1
+    assert coverage.sample_limited_rows == 1
+    assert coverage.reference_answer_tokens_total == 5
+    assert coverage.reference_answer_tokens_retained == 2

@@ -40,7 +40,9 @@
   },
   "promotion_gates": {
     "retain_fixed_r32_improvement": 0.9,
-    "max_fixed_r32_size_ratio": 0.6
+    "max_fixed_r32_size_ratio": 0.6,
+    "require_beats_controls": true,
+    "min_control_ppl_advantage_pct": 0.0
   },
   "candidates": [
     {
@@ -76,6 +78,20 @@
       "mode": "rank_map_from_candidate",
       "rank_map_from_candidate": "dynamic_r32_init8_min4_150",
       "tradeoff_candidate": true
+    },
+    {
+      "id": "random_same_budget_seed17_600",
+      "pack": "fault-codes-gemma4-it-answer-random-same-budget-seed17-600",
+      "mode": "random_same_budget",
+      "control_source_candidate": "hetero_r32_init8_min4_map_600",
+      "control_seed": 17
+    },
+    {
+      "id": "shuffled_discovered_seed17_600",
+      "pack": "fault-codes-gemma4-it-answer-shuffled-discovered-seed17-600",
+      "mode": "shuffled_discovered",
+      "control_source_candidate": "hetero_r32_init8_min4_map_600",
+      "control_seed": 17
     }
   ]
 }
