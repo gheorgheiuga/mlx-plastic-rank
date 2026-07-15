@@ -43,24 +43,66 @@ class SliceLoRA:
         active = mx.sum((self.gates > 0.5).astype(mx.int32))
         return int(active.item())
 
+    @property
+    def active_component_indices(self) -> Tuple[int, ...]:
+        """Return active factor-pair indices in physical tensor order."""
+
+        if self.gates is None:
+            return tuple(range(self.rank))
+        mask = self.gates > 0.5
+        mx.eval(mask)
+        return tuple(
+            index
+            for index in range(self.rank)
+            if bool(mask[index].item())
+        )
+
+    def component_utilities(self) -> Tuple[float, ...]:
+        """Return the raw pair-norm heuristic for each factor pair.
+
+        ``||A[:, j]|| * ||B[j, :]||`` is stable under reciprocal rescaling of
+        one pair, but not under general rotations or mixing of the factors. Use
+        loss ablation, gradients, or a canonicalized update for evidentiary
+        claims about a component's causal value.
+        """
+
+        A = self.A.astype(mx.float32)
+        B = self.B.astype(mx.float32)
+        column_norms = mx.sqrt(mx.sum(A * A, axis=0))
+        row_norms = mx.sqrt(mx.sum(B * B, axis=1))
+        utilities = column_norms * row_norms
+        mx.eval(utilities)
+        return tuple(float(utilities[index].item()) for index in range(self.rank))
+
+    def set_active_components(self, indices: Iterable[int]) -> None:
+        """Activate arbitrary factor pairs without moving trainable arrays."""
+
+        selected = tuple(int(index) for index in indices)
+        if not selected:
+            raise ValueError("At least one component must remain active")
+        if len(set(selected)) != len(selected):
+            raise ValueError("Active component indices must be unique")
+        if any(index < 0 or index >= self.rank for index in selected):
+            raise ValueError(
+                f"Active component indices must be in [0, {self.rank - 1}], got {selected}"
+            )
+        active = set(selected)
+        self.gates = mx.array(
+            [1.0 if index in active else 0.0 for index in range(self.rank)],
+            dtype=mx.float32,
+        )
+
     def set_active_rank(self, active_rank: int) -> None:
         if active_rank <= 0 or active_rank > self.rank:
             raise ValueError(f"Active rank must be in [1, {self.rank}], got {active_rank}")
-        if active_rank == self.rank:
-            self.gates = mx.ones((self.rank,), dtype=mx.float32)
-            return
-        self.gates = mx.concatenate(
-            [
-                mx.ones((active_rank,), dtype=mx.float32),
-                mx.zeros((self.rank - active_rank,), dtype=mx.float32),
-            ],
-            axis=0,
-        )
+        self.set_active_components(range(active_rank))
 
     def export_arrays(self) -> Tuple[mx.array, mx.array, float, int]:
-        export_rank = self.active_rank
-        A = self.A[:, :export_rank]
-        B = self.B[:export_rank, :]
+        active_indices = self.active_component_indices
+        export_rank = len(active_indices)
+        indices = mx.array(active_indices, dtype=mx.int32)
+        A = mx.take(self.A, indices, axis=1)
+        B = mx.take(self.B, indices, axis=0)
         export_alpha = 0.0 if self.alpha == 0.0 else self.scale * export_rank
         return A, B, float(export_alpha), export_rank
 

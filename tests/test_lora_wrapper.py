@@ -99,6 +99,40 @@ def test_active_rank_gate_limits_lora_delta():
     assert export_rank == 1
 
 
+def test_arbitrary_component_gates_apply_and_export_exact_selected_pairs():
+    adapter = SliceLoRA(
+        name="blocks.0.attn.q_proj",
+        start=0,
+        end=3,
+        rank=3,
+        alpha=6.0,
+        A=mx.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 4.0, 0.0],
+                [0.0, 0.0, 2.0],
+            ],
+            dtype=mx.float16,
+        ),
+        B=mx.eye(3, dtype=mx.float16),
+        input_dim=3,
+        output_dim=3,
+    )
+    x = mx.array([[2.0, 3.0, 5.0]], dtype=mx.float16)
+    adapter.set_active_components((1, 2))
+    export_A, export_B, _, export_rank = adapter.export_arrays()
+
+    assert adapter.active_component_indices == (1, 2)
+    assert adapter.component_utilities() == pytest.approx((1.0, 4.0, 2.0))
+    assert mx.allclose(
+        adapter.delta(x),
+        mx.array([[0.0, 24.0, 20.0]], dtype=mx.float16),
+    )
+    assert export_rank == 2
+    assert mx.allclose(export_A, adapter.A[:, 1:])
+    assert mx.allclose(export_B, adapter.B[1:, :])
+
+
 def test_alpha_zero_no_effect():
     base = nn.Linear(4, 12, bias=False)
     wrapper = LoRAFusedLinear(base, input_dim=4, output_dim=12)

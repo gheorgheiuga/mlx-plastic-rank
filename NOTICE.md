@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Last checked: 2026-06-10.
+Last checked: 2026-07-13.
 
 `mlx-plastic-rank` is licensed under the MIT License in `LICENSE`. This notice
 covers external data and model resources referenced by repository docs,
@@ -11,6 +11,19 @@ source trees are vendored in this repository. Before publishing generated data,
 trained packs, checkpoint-derived artifacts, environments, or binary bundles,
 carry the applicable upstream license, attribution, and citation into that
 artifact.
+
+## Repository-Generated Synthetic Evidence
+
+`codex/evidence/capacity_migration_reference_seed0_9.*` and
+`codex/evidence/capacity_migration_learned_dense_seed1_10.*` are compact metrics
+generated entirely from seeded local synthetic fixtures. They do not
+contain third-party data, downloaded model weights, prompts, or checkpoints.
+Their generator entry points and protocol boundaries are recorded in the
+corresponding DSN and benchmark scripts. The learned V1 snapshot was produced
+from a dirty worktree based on the revision recorded in its provenance section.
+The retained outputs are hash-bound, but that base revision and the nearest
+post-run source hashes cannot independently reconstruct or prove the exact
+uncommitted generator state.
 
 ## External Datasets
 

@@ -1,0 +1,23 @@
+{
+  "kind": "rank_map_budget_normalization",
+  "status": "passed",
+  "profile": "heavy",
+  "tensor_dtype": "fp16",
+  "alpha_dtype": "fp32",
+  "target_budget_bytes": 25041440,
+  "source_total_bytes": 24846880,
+  "normalized_total_bytes": 25035296,
+  "budget_slack_bytes": 6144,
+  "source_rank_sum": 1984,
+  "normalized_rank_sum": 2000,
+  "changes": [
+    {
+      "adapter": "blocks.16.attn.k_proj",
+      "action": "promote",
+      "old_rank": 16,
+      "new_rank": 32,
+      "byte_delta": 188416
+    }
+  ],
+  "rank_map": "codex/bakeoffs/rank_maps/fault_codes_normalized_to_sql_budget.json"
+}

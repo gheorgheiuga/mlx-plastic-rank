@@ -4,7 +4,7 @@
 **Title:** Add reproducible pack bakeoff workflow
 **Date:** 2026-06-10
 **Status:** Accepted as orchestration workflow
-**Evidence Status:** Workflow implementation and compact fault-code snapshot added; second-domain validation pending
+**Evidence Status:** Workflow and two-domain local replication completed; reciprocal paired transfer is diagnostic single-seed evidence
 **Related Research Inbox Entry:** Replicable Gemma 4 pack proof across datasets
 
 ---
@@ -50,7 +50,10 @@
 - Specs and snapshots:
   - `codex/bakeoffs/fault_codes_gemma4_it_fullscale.json`
   - `codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json`
+  - `codex/bakeoffs/text_to_sql_paired_transfer_screen_seed42.json`
   - `codex/evidence/fault_codes_full2700_fullscale_summary.json`
+  - `codex/evidence/text_to_sql_fullscale_summary.json`
+  - `codex/evidence/text_to_sql_paired_transfer_screen_seed42.json`
 - Tests:
   - `tests/test_bakeoff.py`
   - `tests/test_text_to_sql_extract.py`
@@ -61,14 +64,17 @@
   dynamic discovery, and fresh heterogeneous rank-map packs.
 - The full-split fault-code result is reviewable from committed compact
   evidence without committing raw local artifacts.
-- Broader Pop Rank claims remain experimental until the Text-to-SQL spec, or
-  another permissive large dataset, completes and supports the same tradeoff.
+- Text-to-SQL reproduced the quality/size tradeoff and its reciprocal paired
+  screen found a small native-map advantage over a fault-code transplant.
+- Broader Pop Rank claims remain experimental until the cross-domain result is
+  repeated across training seeds and stronger theorem-specific controls.
 - Promotion criteria are explicit: the hetero/rank-map candidate must pass
   proof, beat fixed r16, retain at least 90% of fixed r32 improvement over base,
   and stay under 60% of fixed r32 adapter bytes.
 
 ## Follow-ups
-- [ ] Run the Text-to-SQL full-scale bakeoff.
+- [x] Run the Text-to-SQL full-scale bakeoff.
+- [x] Run a reciprocal paired Text-to-SQL native-versus-transplant screen.
 - [ ] Repeat the best candidate with at least two seeds.
 - [ ] Add generation or task-specific exact-match gates when a domain has a
   stable non-PPL task metric.

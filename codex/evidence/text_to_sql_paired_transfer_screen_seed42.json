@@ -1,0 +1,101 @@
+{
+  "kind": "text_to_sql_paired_transfer_screen_seed42_evidence",
+  "run_date": "2026-07-12",
+  "evidence_status": "single-seed reciprocal paired transfer screen; diagnostic, not confirmatory multi-seed evidence",
+  "source_spec": "codex/bakeoffs/text_to_sql_paired_transfer_screen_seed42.json",
+  "raw_summary": "out/text_to_sql_paired_transfer_screen_seed42/text_to_sql_paired_transfer_screen_seed42_summary.json",
+  "base_model": "mlx-community/gemma-4-12B-it-qat-mxfp8",
+  "dataset": {
+    "name": "gretelai/synthetic_text_to_sql",
+    "license": "Apache-2.0",
+    "train_rows": 10000,
+    "eval_source_rows": 1000,
+    "eval_rows": 300,
+    "answer_tokens_eval": 7965,
+    "sequence_length": 256
+  },
+  "paired_protocol": {
+    "adapter_init_seed": 42,
+    "batch_seed": 42001,
+    "training_seed": 42002,
+    "batch_schedule_digest": "cea7ce333610e971315398609b83448b5f4e182322b93bb2ecb54f5a2044aa49",
+    "steps": 600,
+    "batch_size": 1,
+    "learning_rate": 0.00005,
+    "lora_dropout": 0.05,
+    "bootstrap_resamples": 5000,
+    "bootstrap_seed": 42
+  },
+  "rank_map_control": {
+    "native_map": "codex/bakeoffs/rank_maps/text_to_sql_discovered_map.json",
+    "transplanted_map": "codex/bakeoffs/rank_maps/fault_codes_normalized_to_sql_budget.json",
+    "normalization_report": "codex/bakeoffs/rank_maps/fault_codes_normalized_to_sql_budget_report.json",
+    "adapter_count": 136,
+    "different_rank_assignments": 65,
+    "native_tensor_bytes": 25041440,
+    "transplanted_tensor_bytes": 25035296,
+    "budget_slack_bytes": 6144,
+    "budget_slack_ratio": 0.00024535170948550725
+  },
+  "base": {
+    "perplexity": 1.927457335378043,
+    "token_accuracy": 0.8632768361581921
+  },
+  "fixed_r32_context": {
+    "pack": "text-to-sql-gemma4-it-answer-r32-10k-600",
+    "perplexity": 1.7118200554952636,
+    "token_accuracy": 0.883113622096673,
+    "size_mb": 54.162506103515625,
+    "effective_rank": 4352,
+    "proof_status": "passed",
+    "pairing_status": "unpaired contextual quality anchor"
+  },
+  "native_map": {
+    "pack": "text-to-sql-paired-s42-discovered-map-600",
+    "perplexity": 1.7172105540446108,
+    "token_accuracy": 0.8834902699309479,
+    "size_mb": 23.917991638183594,
+    "effective_rank": 1996,
+    "proof_status": "passed",
+    "retained_fixed_r32_gain_ratio": 0.9750020100778612,
+    "fixed_r32_size_ratio": 0.4415968417796514
+  },
+  "fault_map_transplant": {
+    "pack": "text-to-sql-paired-s42-fault-map-normalized-600",
+    "perplexity": 1.742856498302277,
+    "token_accuracy": 0.8793471437539234,
+    "size_mb": 23.912216186523438,
+    "effective_rank": 2000,
+    "proof_status": "passed"
+  },
+  "paired_native_vs_transplant": {
+    "method": "paired_example_bootstrap",
+    "examples": 300,
+    "total_tokens": 7965,
+    "ppl_difference_native_minus_transplant": -0.025645944257666198,
+    "ppl_difference_ci_95": [
+      -0.03000547132532677,
+      -0.02169130646962722
+    ],
+    "native_relative_ppl_advantage": 0.014714891491438342,
+    "native_relative_ppl_advantage_ci_95": [
+      0.012903599872354746,
+      0.016583160644288244
+    ],
+    "probability_native_better": 1.0,
+    "passed": true
+  },
+  "promotion_gate": {
+    "passed": true,
+    "min_retained_fixed_r32_gain_ratio": 0.9,
+    "max_fixed_r32_size_ratio": 0.6,
+    "required_native_beats_transplant": true,
+    "required_paired_ci_excludes_zero": true
+  },
+  "interpretation": {
+    "supported": "On this one paired seed, the Text-to-SQL-native placement beat a byte-matched fault-code placement while retaining 97.50% of the fixed-r32 PPL gain at 44.16% of its size.",
+    "cross_domain_context": "Together with the reverse fault-code screen, both native maps beat reciprocal transplants, but only by 1.12% and 1.47% relative PPL.",
+    "not_supported": "This does not establish multi-seed domain specificity, a direct Pop-theorem selector, or an online dynamic-rank advantage.",
+    "next_gate": "Repeat the two-domain native-versus-transplant matrix across training seeds, then test Pop-spectral maps against factor-norm, anti-Pop, shuffled, random, and target-constant controls."
+  }
+}

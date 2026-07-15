@@ -1,0 +1,167 @@
+{
+  "kind": "learned_mlx_capacity_migration_compact_evidence",
+  "schema_version": 2,
+  "source_report_schema_version": 1,
+  "protocol": "tiny_mlx_dense_v1",
+  "mode": "evidence",
+  "development_seeds": [0],
+  "confirmatory_seeds": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "evidence_status": "learned_dense_capacity_migration_gate_failed",
+  "source_artifacts": "out/capacity_migration/learned_mlx_dense_seed1_10/",
+  "provenance": {
+    "exact_command": "UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/learned_capacity_migration_benchmark.py --mode evidence --output-dir out/capacity_migration/learned_mlx_dense_seed1_10 --require-pass",
+    "expected_exit_code": 2,
+    "base_git_revision": "55d94388848d0ce3be6ff22baa97d47a3cdeb9ab",
+    "worktree_state": "dirty_with_uncommitted_benchmark_changes",
+    "reproducibility_limitation": "The base revision does not contain the exact learned V1 generator state. Artifact hashes bind the retained outputs, but the nearest retained source hashes were captured after the run from a dirty worktree and do not independently prove the exact code that generated them.",
+    "source_hash_timing": "nearest_retained_pre_audit_source_capture_after_the_run",
+    "hashes": {
+      "generator_script_nearest_retained_sha256": "35c181b2972166cc90db654cf15304ceb8da4777462259ada1604218a6544473",
+      "learned_capacity_migration_nearest_retained_source_sha256": "f95399eed616c5442fb5e616dc2680a9ab3087d808a8fa62363b4b08e770d0da",
+      "manager_nearest_retained_source_sha256": "e2e63035cd3a09dc3fdb4e12b7edc0a255cc9dec0ad81c6d1e05d214cb54cd37",
+      "artifact_writer_nearest_retained_source_sha256": "03e288c7a1d2e55ce54ed3cf570451457de6e9c894617c95655ea111f31ddf38",
+      "reported_protocol_fixture_accounting_slice_sha256": "5a826f54c47dc64f49d54fba7ff75440d262446ef53ecb5cb361351adcc1e36b",
+      "summary_json_sha256": "9c93a8fe3ed1969ce93eff1d8461abef091dbed406dbd8e491446735d51b49ff",
+      "summary_csv_sha256": "a6a5e3b07ad647c290662355b56bc441ab8c6c53b49292abf4d455683170a0c1",
+      "summary_markdown_sha256": "f392589bbc57548a48f859e7ff8e3a9941ce07bbc5fc9475dec8b668bec62ccf",
+      "trajectory_jsonl_sha256": "9a2bc1b6f97289ca4dcc987dbbe89787fd630f942edfc3ce26dd29bf11263832"
+    }
+  },
+  "failures": [
+    {
+      "seed": 2,
+      "condition": "random",
+      "failure_type": "FloatingPointError",
+      "message": "non-finite value in training gradients"
+    },
+    {
+      "seed": 3,
+      "condition": "extra_capacity",
+      "failure_type": "FloatingPointError",
+      "message": "non-finite value in training gradients"
+    }
+  ],
+  "primary_metrics": {
+    "guided_recycle": {
+      "successful_seeds": 10,
+      "b_score_auc_mean": 0.5176471935298558,
+      "b_final_score_mean": 0.6359596524135274,
+      "b_final_alignment_mean": 0.8,
+      "a_score_end_b_mean": 0.2567901142154517,
+      "a_return_post_supervised_loss_probe_pre_update_score_mean": 0.25692804388447354
+    },
+    "static": {
+      "successful_seeds": 10,
+      "b_score_auc_mean": 0.27919836412307897
+    },
+    "random": {
+      "successful_seeds": 9,
+      "b_score_auc_mean": 0.3859230616275989
+    },
+    "fixed_split": {
+      "successful_seeds": 10,
+      "b_score_auc_mean": 0.4949193197419063
+    },
+    "extra_capacity": {
+      "successful_seeds": 9,
+      "active_rank_budget": 8,
+      "a_score_end_b_mean": 0.77774730200933,
+      "b_final_score_mean": 0.7983492790126973
+    },
+    "guided_vault": {
+      "successful_seeds": 10,
+      "b_score_auc_mean": 0.5605386019734296,
+      "a_score_end_b_mean": 0.247602734692029,
+      "a_return_post_supervised_loss_probe_pre_update_score_mean": 0.5270159167579908,
+      "max_learned_inactive_a_column_rank_lower_bound_mean": 4.3
+    },
+    "oracle": {
+      "successful_seeds": 10,
+      "b_score_auc_mean": 0.606354655487606,
+      "b_final_alignment_mean": 1.0
+    },
+    "never_a": {
+      "successful_seeds": 10,
+      "a_return_post_supervised_loss_probe_pre_update_score_mean": 0.0
+    }
+  },
+  "paired_comparisons": {
+    "guided_recycle_vs_static_b_score_auc": {
+      "pairs": 10,
+      "mean_difference": 0.23844882940677675,
+      "ci_95": [0.1822271884392373, 0.297374968581757]
+    },
+    "guided_recycle_vs_random_b_score_auc": {
+      "pairs": 9,
+      "mean_difference": 0.1267868001838945,
+      "ci_95": [0.06314498652384691, 0.18020958956757252],
+      "interpretation": "conditional_positive_result_over_nine_finite_pairs_not_a_complete_ten_seed_random_gate"
+    },
+    "guided_recycle_vs_random_b_final_alignment": {
+      "pairs": 9,
+      "mean_difference": 0.33333333333333337,
+      "ci_95": [0.18518518518518517, 0.48148148148148157],
+      "bootstrap_seed": 73273,
+      "positive_bootstrap_fraction": 1.0,
+      "interpretation": "conditional_positive_result_over_nine_finite_pairs_not_a_complete_ten_seed_localization_gate"
+    },
+    "guided_recycle_vs_fixed_split_b_score_auc": {
+      "pairs": 10,
+      "mean_difference": 0.022727873787949486,
+      "ci_95": [-0.03461497818935205, 0.08163894361923195]
+    },
+    "guided_event_window_vs_static": {
+      "pairs": 10,
+      "mean_difference": 0.14310968418068237,
+      "ci_95": [0.08065433124731372, 0.20517529027232137]
+    }
+  },
+  "passed_gates": [
+    "at_least_ten_confirmatory_seeds",
+    "active_rank_budget_conserved",
+    "rank_move_precedes_matched_b_advantage",
+    "declared_control_conditions_present",
+    "never_a_reference_is_scratch_like",
+    "oracle_bounds_learned_localization"
+  ],
+  "provisional_checks": [
+    {
+      "id": "released_A_column_and_unrelated_master_checks",
+      "status": "provisional_A_column_only",
+      "limitation": "Released A columns and unrelated float32 masters were checked, but learned state stored only in B rows was not audited."
+    },
+    {
+      "id": "vault_dormant_rank_mean_4_3",
+      "status": "provisional_A_column_lower_bound",
+      "limitation": "The 4.3 mean counts inactive factor pairs with learned A-column state and can miss B-only learned state."
+    }
+  ],
+  "documentary_audit_corrections": [
+    "The generated source report marked guided_rank_localizes_b_more_than_random as passed from aggregate alignment. This compact evidence treats it as incomplete and failed because only nine paired random seeds were finite.",
+    "The generated source report marked strict_recycle_transactions_are_clean as passed. This compact evidence limits that result to the checked A columns and unrelated float32 masters because B-only learned state was not audited."
+  ],
+  "failed_gates": [
+    "complete_finite_seed_condition_matrix",
+    "guided_rank_localizes_b_more_than_random",
+    "guided_b_acquisition_beats_matched_controls",
+    "joint_sufficient_capacity_learns_both",
+    "vault_post_supervised_probe_access_has_inactive_a_column_evidence",
+    "strict_recycle_post_supervised_probe_access_is_low",
+    "unlabeled_cue_wake_measured"
+  ],
+  "measurement_semantics": {
+    "a_return_metric": "measured after a supervised A-loss probe and any resulting gate transfer but before a parameter update",
+    "cue_triggered_wake_tested": false,
+    "rank_floor_interpretation": "min_rank=1 guarantees at least one A-site component remains active; some seeds retained more, and dense routes can preserve A through other sites",
+    "storage_audit": "A-column lower bound only; B-only learned state was not audited",
+    "active_byte_label": "active_factor_bytes in the source report denotes float32 master-factor bytes, not fp16 physical adapter bytes"
+  },
+  "v2_requirements": [
+    "development-only optimization stability calibration",
+    "predeclared A/B baseline ledger",
+    "unlabeled cue path measured before any supervised loss probe",
+    "rank-zero or explicitly A1-matched forgetting control",
+    "learned-state audit across both A columns and B rows"
+  ],
+  "claim_boundary": "This is a failed synthetic learned-model promotion gate with positive partial evidence for loss-guided effective-rank movement. The nine-pair random AUC result is conditional, strict-recycle and dormant-state checks are provisional A-column lower bounds, and learned V1 did not test cue-triggered wake through an unlabeled path. It does not establish physical-memory conservation, autonomous self-reorganization, human-like forgetting, or a large-model result."
+}

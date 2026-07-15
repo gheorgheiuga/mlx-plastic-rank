@@ -1,0 +1,2311 @@
+{
+  "aggregate": [
+    {
+      "a_latent_score_end_b_mean": 0.9999847412109375,
+      "a_return_final_score_mean": 0.9999999997671694,
+      "a_return_immediate_score_mean": 0.9999847412109375,
+      "a_return_score_auc_mean": 0.9999993642268237,
+      "a_score_end_b_mean": 0.0,
+      "b_final_alignment_mean": 1.0,
+      "b_final_score_mean": 0.9999634632297933,
+      "b_migrated_rank_mean": 2.0,
+      "b_score_auc_mean": 0.9002317818544802,
+      "budget_pass_rate": 1.0,
+      "condition": "vault",
+      "max_resident_rank_mean": 4.0,
+      "relearning_advantage_over_scratch_mean": 0.10199608404105706,
+      "seeds": 10
+    },
+    {
+      "a_latent_score_end_b_mean": 0.0,
+      "a_return_final_score_mean": 0.9999626471156551,
+      "a_return_immediate_score_mean": 0.0,
+      "a_return_score_auc_mean": 0.8980032801857666,
+      "a_score_end_b_mean": 0.0,
+      "b_final_alignment_mean": 1.0,
+      "b_final_score_mean": 0.9999634632297933,
+      "b_migrated_rank_mean": 2.0,
+      "b_score_auc_mean": 0.9002317818544802,
+      "budget_pass_rate": 1.0,
+      "condition": "recycle",
+      "max_resident_rank_mean": 2.0,
+      "relearning_advantage_over_scratch_mean": 0.0,
+      "seeds": 10
+    },
+    {
+      "a_latent_score_end_b_mean": 0.9999847412109375,
+      "a_return_final_score_mean": 0.9999999997671694,
+      "a_return_immediate_score_mean": 0.9999847412109375,
+      "a_return_score_auc_mean": 0.9999993642268237,
+      "a_score_end_b_mean": 0.9999847412109375,
+      "b_final_alignment_mean": 0.0,
+      "b_final_score_mean": 0.0,
+      "b_migrated_rank_mean": 0.0,
+      "b_score_auc_mean": 0.0,
+      "budget_pass_rate": 1.0,
+      "condition": "static",
+      "max_resident_rank_mean": 2.0,
+      "relearning_advantage_over_scratch_mean": 0.10199608404105706,
+      "seeds": 10
+    },
+    {
+      "a_latent_score_end_b_mean": 0.5014653122343914,
+      "a_return_final_score_mean": 0.5014729639878129,
+      "a_return_immediate_score_mean": 0.5014653122343914,
+      "a_return_score_auc_mean": 0.501472645281512,
+      "a_score_end_b_mean": 0.5014653122343914,
+      "b_final_alignment_mean": 0.5,
+      "b_final_score_mean": 0.530376969534581,
+      "b_migrated_rank_mean": 1.0,
+      "b_score_auc_mean": 0.5082860221710984,
+      "budget_pass_rate": 1.0,
+      "condition": "fixed_split",
+      "max_resident_rank_mean": 2.0,
+      "relearning_advantage_over_scratch_mean": -0.3965306349042546,
+      "seeds": 10
+    },
+    {
+      "a_latent_score_end_b_mean": 0.0,
+      "a_return_final_score_mean": 0.2971733987992895,
+      "a_return_immediate_score_mean": 0.0,
+      "a_return_score_auc_mean": 0.2600501547337261,
+      "a_score_end_b_mean": 0.0,
+      "b_final_alignment_mean": 0.4,
+      "b_final_score_mean": 0.39042403314327856,
+      "b_migrated_rank_mean": 0.8,
+      "b_score_auc_mean": 0.3623036437873882,
+      "budget_pass_rate": 1.0,
+      "condition": "random",
+      "max_resident_rank_mean": 2.0,
+      "relearning_advantage_over_scratch_mean": -0.6379531254520405,
+      "seeds": 10
+    },
+    {
+      "a_latent_score_end_b_mean": 0.0,
+      "a_return_final_score_mean": 0.9999847412109375,
+      "a_return_immediate_score_mean": 0.0,
+      "a_return_score_auc_mean": 0.9583339691162109,
+      "a_score_end_b_mean": 0.0,
+      "b_final_alignment_mean": 1.0,
+      "b_final_score_mean": 0.9999847412109375,
+      "b_migrated_rank_mean": 2.0,
+      "b_score_auc_mean": 0.9583339691162109,
+      "budget_pass_rate": 1.0,
+      "condition": "oracle",
+      "max_resident_rank_mean": 2.0,
+      "relearning_advantage_over_scratch_mean": 0.06033068893044434,
+      "seeds": 10
+    },
+    {
+      "a_latent_score_end_b_mean": 0.9999847412109375,
+      "a_return_final_score_mean": 0.9999999997671694,
+      "a_return_immediate_score_mean": 0.9999847412109375,
+      "a_return_score_auc_mean": 0.9999993642268237,
+      "a_score_end_b_mean": 0.9999847412109375,
+      "b_final_alignment_mean": 1.0,
+      "b_final_score_mean": 0.9999847412109375,
+      "b_migrated_rank_mean": 2.0,
+      "b_score_auc_mean": 0.9583339691162109,
+      "budget_pass_rate": 1.0,
+      "condition": "extra_capacity",
+      "max_resident_rank_mean": 4.0,
+      "relearning_advantage_over_scratch_mean": 0.10199608404105706,
+      "seeds": 10
+    }
+  ],
+  "claim_boundary": "Passing verifies effective active-rank accounting, paired transfers, and cue-triggered dormant-factor restoration in an orthogonal synthetic fixture with idealized component-level counterfactual gradients. That signal is a routing upper bound and does not show that a trained neural model can discover the same sites. Vault rows also report resident rank: parked factors are stored information, not erased parameters. The fixed student preallocates every possible slot, so this is not parameter-memory conservation.",
+  "config": {
+    "bootstrap_resamples": 2000,
+    "bootstrap_seed": 73,
+    "confidence_level": 0.95,
+    "control_margin": 0.05,
+    "learning_rate": 0.5,
+    "phase_steps": 8,
+    "score_threshold": 0.9,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "site_count": 4,
+    "task_rank": 2,
+    "transfer_per_step": 1
+  },
+  "evidence_status": "counterfactual_reference_mechanics_passed",
+  "gates": {
+    "criteria": [
+      {
+        "id": "active_budget_invariant",
+        "passed": true
+      },
+      {
+        "id": "rank_reaches_new_task_site",
+        "passed": true
+      },
+      {
+        "id": "migration_beats_static",
+        "passed": true
+      },
+      {
+        "id": "migration_beats_future_aware_fixed_split",
+        "passed": true
+      },
+      {
+        "id": "migration_beats_same_timing_random",
+        "passed": true
+      },
+      {
+        "id": "vault_is_inaccessible_then_cue_wakeable",
+        "passed": true
+      },
+      {
+        "id": "recycle_has_no_immediate_memory",
+        "passed": true
+      },
+      {
+        "id": "recycle_matches_never_a_schedule",
+        "passed": true
+      },
+      {
+        "id": "extra_capacity_can_retain_both_tasks",
+        "passed": true
+      }
+    ],
+    "kill_criteria": [
+      {
+        "id": "active_budget_violation",
+        "triggered": false
+      },
+      {
+        "id": "no_advantage_over_static",
+        "triggered": false
+      },
+      {
+        "id": "random_transfer_equivalent",
+        "triggered": false
+      },
+      {
+        "id": "fixed_split_equivalent",
+        "triggered": false
+      },
+      {
+        "id": "rank_did_not_migrate",
+        "triggered": false
+      }
+    ],
+    "paired_comparisons": {
+      "recycle_vs_fixed_split_b_score_auc": {
+        "ci_lower": 0.37695012670868017,
+        "ci_upper": 0.4081728934244167,
+        "confidence_level": 0.95,
+        "mean_difference": 0.3919457596833818,
+        "method": "paired_fixture_seed_bootstrap",
+        "pairs": 10,
+        "probability_left_better": 1.0,
+        "resamples": 2000,
+        "seed": 77
+      },
+      "recycle_vs_random_b_score_auc": {
+        "ci_lower": 0.37587312340794277,
+        "ci_upper": 0.7131363788597898,
+        "confidence_level": 0.95,
+        "mean_difference": 0.5379281380670919,
+        "method": "paired_fixture_seed_bootstrap",
+        "pairs": 10,
+        "probability_left_better": 1.0,
+        "resamples": 2000,
+        "seed": 78
+      },
+      "recycle_vs_static_b_score_auc": {
+        "ci_lower": 0.8984126117205405,
+        "ci_upper": 0.9021701849958721,
+        "confidence_level": 0.95,
+        "mean_difference": 0.9002317818544802,
+        "method": "paired_fixture_seed_bootstrap",
+        "pairs": 10,
+        "probability_left_better": 1.0,
+        "resamples": 2000,
+        "seed": 76
+      },
+      "vault_vs_fixed_split_b_score_auc": {
+        "ci_lower": 0.37567012053692617,
+        "ci_upper": 0.40851495785744546,
+        "confidence_level": 0.95,
+        "mean_difference": 0.3919457596833818,
+        "method": "paired_fixture_seed_bootstrap",
+        "pairs": 10,
+        "probability_left_better": 1.0,
+        "resamples": 2000,
+        "seed": 74
+      },
+      "vault_vs_random_b_score_auc": {
+        "ci_lower": 0.36326310082341895,
+        "ci_upper": 0.7139554728538583,
+        "confidence_level": 0.95,
+        "mean_difference": 0.5379281380670919,
+        "method": "paired_fixture_seed_bootstrap",
+        "pairs": 10,
+        "probability_left_better": 1.0,
+        "resamples": 2000,
+        "seed": 75
+      },
+      "vault_vs_static_b_score_auc": {
+        "ci_lower": 0.8984312305779146,
+        "ci_upper": 0.9020863619984532,
+        "confidence_level": 0.95,
+        "mean_difference": 0.9002317818544802,
+        "method": "paired_fixture_seed_bootstrap",
+        "pairs": 10,
+        "probability_left_better": 1.0,
+        "resamples": 2000,
+        "seed": 73
+      }
+    },
+    "passed": true,
+    "status": "counterfactual_reference_mechanics_passed"
+  },
+  "integration_seam": "LoRAManager currently supplies mask-based actuation and norm-product donor heuristics, but it does not accept the benchmark's inactive-component demand signal. The learned MLX bridge must add a recipient-demand seam derived from real gradients, loss ablations, or probe activations before claiming that it reproduces this fixture. Preserve the trajectory schema and active-rank invariant.",
+  "kind": "capacity_migration_reference_benchmark",
+  "runs": [
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.999962146905675,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8966373943086065,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10366765707010783,
+      "scratch_return_score_auc": 0.8963317071567158,
+      "seed": 0,
+      "task_a_site": 3,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999620349579883,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8963317071567158,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.999962146905675,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8966373943086065,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8963317071567158,
+      "seed": 0,
+      "task_a_site": 3,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.10366765707010783,
+      "scratch_return_score_auc": 0.8963317071567158,
+      "seed": 0,
+      "task_a_site": 3,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.5039666455349767,
+      "a_return_final_score": 0.5039743354557153,
+      "a_return_immediate_score": 0.5039666455349767,
+      "a_return_score_auc": 0.5039740151596919,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.5039666455349767,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5064121427501014,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.4853193641561555,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.39235769199702397,
+      "scratch_return_score_auc": 0.8963317071567158,
+      "seed": 0,
+      "task_a_site": 3,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.0,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.0,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.8963317071567158,
+      "scratch_return_score_auc": 0.8963317071567158,
+      "seed": 0,
+      "task_a_site": 3,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0620022619594951,
+      "scratch_return_score_auc": 0.8963317071567158,
+      "seed": 0,
+      "task_a_site": 3,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10366765707010783,
+      "scratch_return_score_auc": 0.8963317071567158,
+      "seed": 0,
+      "task_a_site": 3,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999642226261485,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9023054085265668,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.1011870665301835,
+      "scratch_return_score_auc": 0.8988122976966402,
+      "seed": 1,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.999962943391237,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8988122976966402,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999642226261485,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9023054085265668,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8988122976966402,
+      "seed": 1,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.1011870665301835,
+      "scratch_return_score_auc": 0.8988122976966402,
+      "seed": 1,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.5238113698543712,
+      "a_return_final_score": 0.5238193625815722,
+      "a_return_immediate_score": 0.5238113698543712,
+      "a_return_score_auc": 0.5238190296732333,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.5238113698543712,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5517562564937847,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.5287748317340097,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.3749932680234068,
+      "scratch_return_score_auc": 0.8988122976966402,
+      "seed": 1,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.4761515735368659,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.3968184087370388,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.4482284847171528,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.4295591373822011,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.5019938889596014,
+      "scratch_return_score_auc": 0.8988122976966402,
+      "seed": 1,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.059521671419570765,
+      "scratch_return_score_auc": 0.8988122976966402,
+      "seed": 1,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.1011870665301835,
+      "scratch_return_score_auc": 0.8988122976966402,
+      "seed": 1,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999619542603451,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8961113521546598,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10236383040024444,
+      "scratch_return_score_auc": 0.8976355338265792,
+      "seed": 2,
+      "task_a_site": 0,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999625124408612,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8976355338265792,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999619542603451,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8961113521546598,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8976355338265792,
+      "seed": 2,
+      "task_a_site": 0,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.10236383040024444,
+      "scratch_return_score_auc": 0.8976355338265792,
+      "seed": 2,
+      "task_a_site": 0,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.5143972588938841,
+      "a_return_final_score": 0.5144051079731519,
+      "a_return_immediate_score": 0.5143972588938841,
+      "a_return_score_auc": 0.5144047810479516,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.5143972588938841,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5022038055185283,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.48128631009412126,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.3832307527786276,
+      "scratch_return_score_auc": 0.8976355338265792,
+      "seed": 2,
+      "task_a_site": 0,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.0,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.0,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5021808161019332,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.41851083440430525,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.8976355338265792,
+      "scratch_return_score_auc": 0.8976355338265792,
+      "seed": 2,
+      "task_a_site": 0,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0606984352896317,
+      "scratch_return_score_auc": 0.8976355338265792,
+      "seed": 2,
+      "task_a_site": 0,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10236383040024444,
+      "scratch_return_score_auc": 0.8976355338265792,
+      "seed": 2,
+      "task_a_site": 0,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999629494506861,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8988288437795964,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10125849297588796,
+      "scratch_return_score_auc": 0.8987408712509357,
+      "seed": 3,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999629172336922,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8987408712509357,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999629494506861,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8988288437795964,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8987408712509357,
+      "seed": 3,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.10125849297588796,
+      "scratch_return_score_auc": 0.8987408712509357,
+      "seed": 3,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.47674478292220146,
+      "a_return_final_score": 0.4767520574702807,
+      "a_return_immediate_score": 0.47674478292220146,
+      "a_return_score_auc": 0.47675175447511325,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.47674478292220146,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.47604100269291627,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.4562132248341286,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.42198911677582246,
+      "scratch_return_score_auc": 0.8987408712509357,
+      "seed": 3,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.4767229589449562,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.39729459376091636,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.47604100269291627,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.4562132248341286,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.5014462774900194,
+      "scratch_return_score_auc": 0.8987408712509357,
+      "seed": 3,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.059593097865275224,
+      "scratch_return_score_auc": 0.8987408712509357,
+      "seed": 3,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10125849297588796,
+      "scratch_return_score_auc": 0.8987408712509357,
+      "seed": 3,
+      "task_a_site": 1,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999624515907589,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8974693750160205,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10023123706267156,
+      "scratch_return_score_auc": 0.8997681271641521,
+      "seed": 4,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999632934317836,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8997681271641521,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999624515907589,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8974693750160205,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8997681271641521,
+      "seed": 4,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.10023123706267156,
+      "scratch_return_score_auc": 0.8997681271641521,
+      "seed": 4,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.5314580055944671,
+      "a_return_final_score": 0.53146611500007,
+      "a_return_immediate_score": 0.5314580055944671,
+      "a_return_score_auc": 0.5314657772319115,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.5314580055944671,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5130679884094136,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.49169798447469104,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.36830234993224065,
+      "scratch_return_score_auc": 0.8997681271641521,
+      "seed": 4,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.5314336770064334,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.44288978085806713,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.456878346306085,
+      "scratch_return_score_auc": 0.8997681271641521,
+      "seed": 4,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.05856584195205883,
+      "scratch_return_score_auc": 0.8997681271641521,
+      "seed": 4,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10023123706267156,
+      "scratch_return_score_auc": 0.8997681271641521,
+      "seed": 4,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999642869389378,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9024810226369709,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10374109787369323,
+      "scratch_return_score_auc": 0.8962582663531304,
+      "seed": 5,
+      "task_a_site": 2,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999620080627524,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8962582663531304,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999642869389378,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9024810226369709,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8962582663531304,
+      "seed": 5,
+      "task_a_site": 2,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.10374109787369323,
+      "scratch_return_score_auc": 0.8962582663531304,
+      "seed": 5,
+      "task_a_site": 2,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.503379119106294,
+      "a_return_final_score": 0.5033868000620909,
+      "a_return_immediate_score": 0.503379119106294,
+      "a_return_score_auc": 0.5033864801394698,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.503379119106294,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5531611693770178,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.530121228018038,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.3928717862136606,
+      "scratch_return_score_auc": 0.8962582663531304,
+      "seed": 5,
+      "task_a_site": 2,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.0,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.0,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999642869389378,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9024810226369709,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.8962582663531304,
+      "scratch_return_score_auc": 0.8962582663531304,
+      "seed": 5,
+      "task_a_site": 2,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0620757027630805,
+      "scratch_return_score_auc": 0.8962582663531304,
+      "seed": 5,
+      "task_a_site": 2,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10374109787369323,
+      "scratch_return_score_auc": 0.8962582663531304,
+      "seed": 5,
+      "task_a_site": 2,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999648737753164,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9040834527233872,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.09771416999158355,
+      "scratch_return_score_auc": 0.9022851942352401,
+      "seed": 6,
+      "task_a_site": 0,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999642152233409,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9022851942352401,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999648737753164,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9040834527233872,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.9022851942352401,
+      "seed": 6,
+      "task_a_site": 0,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.09771416999158355,
+      "scratch_return_score_auc": 0.9022851942352401,
+      "seed": 6,
+      "task_a_site": 0,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.44839019904776667,
+      "a_return_final_score": 0.4483970409392317,
+      "a_return_immediate_score": 0.44839019904776667,
+      "a_return_score_auc": 0.4483967559648212,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.44839019904776667,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5659806100683473,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.5424067209593549,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.4538884382704189,
+      "scratch_return_score_auc": 0.9022851942352401,
+      "seed": 6,
+      "task_a_site": 0,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.0,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.0,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.43400413114259007,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.41592724815685583,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.9022851942352401,
+      "scratch_return_score_auc": 0.9022851942352401,
+      "seed": 6,
+      "task_a_site": 0,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.05604877488097082,
+      "scratch_return_score_auc": 0.9022851942352401,
+      "seed": 6,
+      "task_a_site": 0,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.09771416999158355,
+      "scratch_return_score_auc": 0.9022851942352401,
+      "seed": 6,
+      "task_a_site": 0,
+      "task_b_site": 1
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999652632970856,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9051470906042579,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.1035994628832978,
+      "scratch_return_score_auc": 0.8963999013435259,
+      "seed": 7,
+      "task_a_site": 2,
+      "task_b_site": 0
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999620599318264,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8963999013435259,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999652632970856,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9051470906042579,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8963999013435259,
+      "seed": 7,
+      "task_a_site": 2,
+      "task_b_site": 0
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.1035994628832978,
+      "scratch_return_score_auc": 0.8963999013435259,
+      "seed": 7,
+      "task_a_site": 2,
+      "task_b_site": 0
+    },
+    {
+      "a_latent_score_end_b": 0.49547254218148096,
+      "a_return_final_score": 0.4954801024924883,
+      "a_return_immediate_score": 0.49547254218148096,
+      "a_return_score_auc": 0.4954797875948927,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.49547254218148096,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5744897131153135,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.5505614078866206,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.4009201137486332,
+      "scratch_return_score_auc": 0.8963999013435259,
+      "seed": 7,
+      "task_a_site": 2,
+      "task_b_site": 0
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.5045121990294567,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.48349855576592143,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5744897131153135,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.5505614078866206,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.41290134557760444,
+      "scratch_return_score_auc": 0.8963999013435259,
+      "seed": 7,
+      "task_a_site": 2,
+      "task_b_site": 0
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.061934067772685064,
+      "scratch_return_score_auc": 0.8963999013435259,
+      "seed": 7,
+      "task_a_site": 2,
+      "task_b_site": 0
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.1035994628832978,
+      "scratch_return_score_auc": 0.8963999013435259,
+      "seed": 7,
+      "task_a_site": 2,
+      "task_b_site": 0
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999632565738708,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8996674820257182,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10366079028774189,
+      "scratch_return_score_auc": 0.8963385739390818,
+      "seed": 8,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999620374727175,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8963385739390818,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999632565738708,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8996674820257182,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8963385739390818,
+      "seed": 8,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.10366079028774189,
+      "scratch_return_score_auc": 0.8963385739390818,
+      "seed": 8,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.5040215797939043,
+      "a_return_final_score": 0.5040292705528735,
+      "a_return_immediate_score": 0.5040215797939043,
+      "a_return_score_auc": 0.5040289502219365,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.5040215797939043,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5306528444869955,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.5085504065434109,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.3923096237171453,
+      "scratch_return_score_auc": 0.8963385739390818,
+      "seed": 8,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.4959404576788131,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.4133102024269344,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.46933189672394204,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.4497835625728,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.4830283715121474,
+      "scratch_return_score_auc": 0.8963385739390818,
+      "seed": 8,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.06199539517712915,
+      "scratch_return_score_auc": 0.8963385739390818,
+      "seed": 8,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10366079028774189,
+      "scratch_return_score_auc": 0.8963385739390818,
+      "seed": 8,
+      "task_a_site": 1,
+      "task_b_site": 3
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999632268791098,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8995863967690177,
+      "budget_invariant": true,
+      "condition": "vault",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10253703533515901,
+      "scratch_return_score_auc": 0.8974623288916647,
+      "seed": 9,
+      "task_a_site": 3,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999624490103517,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.8974623288916647,
+      "a_return_steps_to_threshold": 3,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999632268791098,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.8995863967690177,
+      "budget_invariant": true,
+      "condition": "recycle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.0,
+      "scratch_return_score_auc": 0.8974623288916647,
+      "seed": 9,
+      "task_a_site": 3,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "static",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.10253703533515901,
+      "scratch_return_score_auc": 0.8974623288916647,
+      "seed": 9,
+      "task_a_site": 3,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.5130116194145676,
+      "a_return_final_score": 0.5130194473506549,
+      "a_return_immediate_score": 0.5130116194145676,
+      "a_return_score_auc": 0.513019121306098,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.5130116194145676,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.5,
+      "b_final_score": 0.5300041624333918,
+      "b_migrated_rank": 1,
+      "b_score_auc": 0.5079287430104538,
+      "budget_invariant": true,
+      "condition": "fixed_split",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.3844432075855667,
+      "scratch_return_score_auc": 0.8974623288916647,
+      "seed": 9,
+      "task_a_site": 3,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.48697312179636987,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.46669000578838304,
+      "a_return_steps_to_threshold": null,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 0.0,
+      "b_final_score": 0.0,
+      "b_migrated_rank": 0,
+      "b_score_auc": 0.0,
+      "budget_invariant": true,
+      "condition": "random",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": -0.4307723231032816,
+      "scratch_return_score_auc": 0.8974623288916647,
+      "seed": 9,
+      "task_a_site": 3,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.0,
+      "a_return_final_score": 0.9999847412109375,
+      "a_return_immediate_score": 0.0,
+      "a_return_score_auc": 0.9583339691162109,
+      "a_return_steps_to_threshold": 2,
+      "a_score_end_b": 0.0,
+      "active_rank_budget": 2,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "oracle",
+      "max_resident_rank": 2,
+      "relearning_advantage_over_scratch": 0.060871640224546275,
+      "scratch_return_score_auc": 0.8974623288916647,
+      "seed": 9,
+      "task_a_site": 3,
+      "task_b_site": 2
+    },
+    {
+      "a_latent_score_end_b": 0.9999847412109375,
+      "a_return_final_score": 0.9999999997671694,
+      "a_return_immediate_score": 0.9999847412109375,
+      "a_return_score_auc": 0.9999993642268237,
+      "a_return_steps_to_threshold": 0,
+      "a_score_end_b": 0.9999847412109375,
+      "active_rank_budget": 4,
+      "b_final_alignment": 1.0,
+      "b_final_score": 0.9999847412109375,
+      "b_migrated_rank": 2,
+      "b_score_auc": 0.9583339691162109,
+      "budget_invariant": true,
+      "condition": "extra_capacity",
+      "max_resident_rank": 4,
+      "relearning_advantage_over_scratch": 0.10253703533515901,
+      "scratch_return_score_auc": 0.8974623288916647,
+      "seed": 9,
+      "task_a_site": 3,
+      "task_b_site": 2
+    }
+  ],
+  "schema_version": 1,
+  "tasks": [
+    {
+      "seed": 0,
+      "task_a": {
+        "coefficients": [
+          -1.1930929772723835,
+          -1.1836468663570263
+        ],
+        "name": "A",
+        "site": 3,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.1930929772723835,
+            -1.1836468663570263
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          1.1935599989840342,
+          -1.1783321319641364
+        ],
+        "name": "B",
+        "site": 1,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.1935599989840342,
+            -1.1783321319641364
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 1,
+      "task_a": {
+        "coefficients": [
+          1.1527549237953227,
+          -1.0990870174183882
+        ],
+        "name": "A",
+        "site": 1,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.1527549237953227,
+            -1.0990870174183882
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          -1.1303185945445526,
+          1.018771917354847
+        ],
+        "name": "B",
+        "site": 2,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.1303185945445526,
+            1.018771917354847
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 2,
+      "task_a": {
+        "coefficients": [
+          -1.1670997756258898,
+          1.1339460802880441
+        ],
+        "name": "A",
+        "site": 0,
+        "targets": [
+          [
+            -1.1670997756258898,
+            1.1339460802880441
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          -1.1211888331356925,
+          1.1162408034224005
+        ],
+        "name": "B",
+        "site": 3,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.1211888331356925,
+            1.1162408034224005
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 3,
+      "task_a": {
+        "coefficients": [
+          1.0739910333096159,
+          1.1251440608216108
+        ],
+        "name": "A",
+        "site": 1,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0739910333096159,
+            1.1251440608216108
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          -1.0026335983109749,
+          1.0518708028656016
+        ],
+        "name": "B",
+        "site": 2,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.0026335983109749,
+            1.0518708028656016
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 4,
+      "task_a": {
+        "coefficients": [
+          -1.0792116485221361,
+          -1.013303019135918
+        ],
+        "name": "A",
+        "site": 1,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.0792116485221361,
+            -1.013303019135918
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          -1.1835910086175438,
+          1.1530325205010876
+        ],
+        "name": "B",
+        "site": 3,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.1835910086175438,
+            1.1530325205010876
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 5,
+      "task_a": {
+        "coefficients": [
+          -1.1380893691516671,
+          1.130406339350827
+        ],
+        "name": "A",
+        "site": 2,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.1380893691516671,
+            1.130406339350827
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          1.1680696241045336,
+          1.0498105312123516
+        ],
+        "name": "B",
+        "site": 3,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.1680696241045336,
+            1.0498105312123516
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 6,
+      "task_a": {
+        "coefficients": [
+          1.0073645487434442,
+          -1.117296884164593
+        ],
+        "name": "A",
+        "site": 0,
+        "targets": [
+          [
+            1.0073645487434442,
+            -1.117296884164593
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          1.1469672536450033,
+          -1.004377960074988
+        ],
+        "name": "B",
+        "site": 1,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.1469672536450033,
+            -1.004377960074988
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 7,
+      "task_a": {
+        "coefficients": [
+          -1.0096572847253624,
+          1.0188260083879366
+        ],
+        "name": "A",
+        "site": 2,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.0096572847253624,
+            1.0188260083879366
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          1.1819408126286204,
+          -1.0171894467378344
+        ],
+        "name": "B",
+        "site": 0,
+        "targets": [
+          [
+            1.1819408126286204,
+            -1.0171894467378344
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 8,
+      "task_a": {
+        "coefficients": [
+          1.0252661797301719,
+          1.0170370536101505
+        ],
+        "name": "A",
+        "site": 1,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0252661797301719,
+            1.0170370536101505
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          -1.1998257078325159,
+          -1.1283736870144214
+        ],
+        "name": "B",
+        "site": 3,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.1998257078325159,
+            -1.1283736870144214
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    },
+    {
+      "seed": 9,
+      "task_a": {
+        "coefficients": [
+          -1.0277078825028911,
+          1.0012870108162246
+        ],
+        "name": "A",
+        "site": 3,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            -1.0277078825028911,
+            1.0012870108162246
+          ]
+        ]
+      },
+      "task_b": {
+        "coefficients": [
+          1.1796595940063876,
+          -1.1108540936356572
+        ],
+        "name": "B",
+        "site": 2,
+        "targets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.1796595940063876,
+            -1.1108540936356572
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "teacher_matrix_rank": 2
+    }
+  ]
+}

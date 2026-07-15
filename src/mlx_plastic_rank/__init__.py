@@ -15,6 +15,12 @@ __all__ = [
     "dequantise",
     "set_seed",
     "get_logger",
+    "DeletionCertificate",
+    "ForgetPolicy",
+    "ForgettingVault",
+    "MemoryRecord",
+    "VerificationReport",
+    "verify_certificate_chain",
 ]
 
 
@@ -65,4 +71,29 @@ def __getattr__(name: str):
         from .plasticity_manager import PlasticityManager
 
         return PlasticityManager
+    if name in {
+        "DeletionCertificate",
+        "ForgetPolicy",
+        "ForgettingVault",
+        "MemoryRecord",
+        "VerificationReport",
+        "verify_certificate_chain",
+    }:
+        from .forgetting_vault import (
+            DeletionCertificate,
+            ForgetPolicy,
+            ForgettingVault,
+            MemoryRecord,
+            VerificationReport,
+            verify_certificate_chain,
+        )
+
+        return {
+            "DeletionCertificate": DeletionCertificate,
+            "ForgetPolicy": ForgetPolicy,
+            "ForgettingVault": ForgettingVault,
+            "MemoryRecord": MemoryRecord,
+            "VerificationReport": VerificationReport,
+            "verify_certificate_chain": verify_certificate_chain,
+        }[name]
     raise AttributeError(f"module 'mlx_plastic_rank' has no attribute '{name}'")

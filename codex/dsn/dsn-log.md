@@ -28,6 +28,14 @@ Track open and closed Decision Support Notes here for quick discovery. Link each
   - Summary: Adds `packs proof` to turn pack, eval, generation, and rank-ledger artifacts into a pass/fail DLC-style domain improvement report; local fault-code proof reports pass, including the full-split 2,700/300 Gemma 4 IT bakeoff where the learned hetero rank map is the best size/quality tradeoff.
   - Link: `codex/dsn/dsn-20260609-domain-pack-proof.md`
 
-- **DSN-20260610-01** — Add reproducible pack bakeoff workflow *(Accepted as orchestration; replication evidence pending)*
-  - Summary: Adds `packs bakeoff` specs for train/eval/rank-ledger/proof runs, commits compact fault-code evidence snapshots, and selects Apache-2.0 Text-to-SQL data as the next large replication surface.
+- **DSN-20260610-01** — Add reproducible pack bakeoff workflow *(Accepted as orchestration; two-domain local replication passed, broader validation experimental)*
+  - Summary: Adds `packs bakeoff` specs for train/eval/rank-ledger/proof runs, commits compact evidence snapshots, reproduces the quality/size tradeoff on Apache-2.0 Text-to-SQL data, and records a diagnostic reciprocal native-versus-transplant screen.
   - Link: `codex/dsn/dsn-20260610-pack-bakeoff-workflow.md`
+
+- **DSN-20260713-01** — Build a controlled spectral forgetting vault *(Parked Experimental; retained and runnable)*
+  - Summary: Preserves the controlled-vault prototype and its explicit deletion boundary, but parks active development until a learned MLX capacity-migration result passes the learned-model promotion gate and needs an external-deletion comparison, or a new project-priority decision resumes the track.
+  - Link: `codex/dsn/dsn-20260713-forgetting-machine.md`
+
+- **DSN-20260713-02** — Test conserved low-rank capacity migration *(Experimental; reference mechanics passed, first learned-MLX promotion gate failed)*
+  - Summary: Restores the founding Pop Rank question and implements fixed-budget `A -> B -> A` reference and learned-MLX benchmarks. The first learned run failed promotion, and a fully finite first-transfer calibration demoted one-step ordering. A new two-transfer horizon-3 controller beat static/random/wrong-task controls and localized B rank, but failed admission because it did not separate from exact one-step and that comparator had a reproducible non-finite seed. Horizon-3 is demoted, shadow-rollout tuning is parked, the full return-A V2 remains blocked, and London remains blocked.
+  - Link: `codex/dsn/dsn-20260713-capacity-migration.md`

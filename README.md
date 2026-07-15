@@ -1,13 +1,28 @@
 # mlx-plastic-rank
 
-Local low-rank adaptation experiments for MLX. The practical goal is a general-capable base model that can load small domain "skill packs"; the Pop Rank research question is whether LoRA rank can describe useful added capability, not just adapter size.[^pop-theorem]
+Local low-rank adaptation experiments for MLX. The practical goal is a general-capable base model that can load small domain "skill packs"; the Pop Rank research question is whether effective rank can expose and control where finite learning capacity moves over time.[^pop-theorem]
 
 ## Current Thesis
-Static LoRA rank is normally treated as a fixed hyperparameter. Pop Rank explores a different path: let training discover where adapter capacity is useful, measure that rank allocation, and then test whether the discovered heterogeneous map can deliver similar quality with fewer exported adapter bytes.
+Pop Rank studies whether a capacity-limited model can move low-rank capacity as it learns: concentrate rank during specialization, park it when it is temporarily inactive, and recycle or revive it later. The central experiment holds the declared effective active-rank count constant, so growth at one site requires shrinkage at another. That invariant does not by itself conserve physical parameter bytes, optimizer state, resident learned factors, or information. Rank is the measurement and control surface for capacity migration, not merely a way to choose a smaller static adapter.
 
-This is still research. The repo now has working mechanics for dynamic active-rank gates, frozen heterogeneous continuation, fresh training from a discovered rank map, and a rank ledger for measuring effective rank, slack, and pack overlap. Local quality-positive results exist on fault codes and Text-to-SQL; only the fault-code result has a paired same-budget control screen. Neither is proof of a general theorem.[^pop-theorem]
+This is an experimental thesis, not an established result. Dynamic gates, sleep/wake paths, the rank ledger, heterogeneous rank maps, and same-budget controls provide enabling mechanics and measurement. A ten-seed orthogonal teacher/student fixture verifies the reference mechanics. The first frozen learned-MLX attempt then found a real partial signal: loss-guided rank movement beat static, had a positive conditional B-AUC difference across nine finite random pairs, and the first loss-guided transfer during the B phase preceded a matched performance advantage. The full promotion gate nevertheless failed because the random comparison was incomplete, another control also went non-finite, the learned controller did not beat a future-aware fixed split conclusively, and the joint-sufficient control narrowly missed threshold. Its A-return metric was measured after a supervised A-loss probe and any resulting gate transfer but before a parameter update; learned V1 did not test cue-triggered wake through an unlabeled retrieval path. The rank-one floor guaranteed at least one A-site component remained active, while some seeds retained more and dense routing could preserve A through other sites. Dormant-factor and strict-recycle counts are provisional A-column lower bounds because B-only learned state was not audited. See [the capacity-migration DSN](codex/dsn/dsn-20260713-capacity-migration.md), [reference evidence](codex/evidence/capacity_migration_reference_seed0_9.md), and the [failed learned-model gate](codex/evidence/capacity_migration_learned_dense_seed1_10.md).
 
-## Current Best Signal
+A frozen follow-up then branched every legal first-B transfer from the same
+A-trained checkpoint on untouched seeds 11–20. Predicted-best beat static,
+prediction-independent random, and an A-loss-selected control, but the full
+candidate ordering was not calibrated and predicted-best did not beat
+predicted-worst conclusively. One-step loss lookahead is therefore demoted as a
+directional controller; only a narrower exploratory move signal survives. See
+[the selector calibration](codex/evidence/loss_lookahead_calibration_seed11_20.md).
+
+A separately frozen two-transfer horizon-3 controller then beat static,
+fixed-random, and wrong-task controls and moved more final rank toward B. Its
+admission gate still failed: it did not separate from exact one-step, whose seed
+26 path reproducibly went non-finite. Horizon-3 is demoted, further exhaustive
+shadow-rollout tuning is parked, and the full return-A V2 remains blocked. See
+[the multi-batch evidence](codex/evidence/multibatch_controller_v2_seed21_30.md).
+
+## Best Supporting Rank-Placement Signal
 Fault-code maintenance pack experiment on `mlx-community/gemma-4-12B-it-qat-mxfp8`, trained on 2,700 rows and evaluated on 300 answer-only held-out samples from `avneetsingla/industrial-fault-codes-sample`:[^fault-codes]
 
 | Model/pack | Size | Effective rank | Answer PPL | Token Acc. |
@@ -19,10 +34,10 @@ Fault-code maintenance pack experiment on `mlx-community/gemma-4-12B-it-qat-mxfp
 
 The strongest signal is now a paired falsification screen. Fresh adapters from the discovered map retained 97.05% of the contextual fixed `r32/600` held-out perplexity gain at 43.82% of its adapter size. With identical initialization, minibatch order, dropout seed, and evaluation examples, it beat five same-budget random maps, an exact-budget shuffle of its own rank histogram, and a target-constant `q16/k16/v8` rule; all paired 95% bootstrap intervals excluded zero.
 
-The important caveat is the cross-domain control: a Text-to-SQL map normalized to the same fault-code byte budget reached PPL 5.9194, only 1.12% behind the fault-code map (paired difference -0.0662, 95% CI [-0.0849, -0.0485]). Rank placement matters, but most of the benefit may be a transferable Gemma architecture/training prior rather than domain semantics. The committed screen is `codex/evidence/fault_codes_paired_control_screen_seed42.json`; the prior contextual snapshot remains in `codex/evidence/fault_codes_full2700_fullscale_summary.{json,csv}`. This is single-seed diagnostic evidence, not theorem validation or multi-seed generalization.
+The important caveat is cross-domain transfer. A Text-to-SQL map normalized to the fault-code budget reached PPL 5.9194, only 1.12% behind the native fault-code map (paired difference -0.0662, 95% CI [-0.0849, -0.0485]). In the reciprocal 300-example Text-to-SQL screen, the native map reached PPL 1.7172 versus 1.7429 for a byte-matched fault-code transplant, a 1.47% advantage (paired difference -0.0256, 95% CI [-0.0300, -0.0217]). Both native maps won, but only narrowly, so rank placement includes a small domain-native signal while much of the benefit may still be a transferable Gemma architecture/training prior. The committed screens are `codex/evidence/fault_codes_paired_control_screen_seed42.json` and `codex/evidence/text_to_sql_paired_transfer_screen_seed42.json`; the prior contextual snapshot remains in `codex/evidence/fault_codes_full2700_fullscale_summary.{json,csv}`. These are single-seed diagnostic results, not theorem validation or multi-seed generalization.
 
 ## Why Plastic Rank?
-Traditional pruning and distillation discard parameters permanently. Plastic rank started as a reversible compression idea: slices are factored into low-rank adapters that can be re-activated when conditions warrant. The pack tooling extends that rank-control surface from compression into local domain adaptation.
+Traditional pruning and distillation discard parameters permanently. Plastic Rank began with a different question: can capacity grow, shrink, sleep, wake, and move as experience changes? Skill packs, rank maps, and quality-per-byte experiments remain useful supporting work, but the canonical goal is now the original one: observe and test capacity migration through learning, specialization, forgetting, and relearning.
 
 ## Key Capabilities
 - Dynamic low-rank factors with deterministic MLX kernels
@@ -50,6 +65,34 @@ Traditional pruning and distillation discard parameters permanently. Plastic ran
 4. Install pack tooling extras before using `packs`: `uv pip install -e '.[packs]'`
 5. Run the sanity check: `uv run python main.py`
 6. Execute the plasticity demo: `uv run python plastic_rank.py --steps 10`
+7. Run the learned capacity-migration smoke matrix: `uv run python scripts/learned_capacity_migration_benchmark.py --mode smoke --output-dir out/capacity_migration/learned_mlx`
+
+## Parked Research Track: Forgetting Machine
+
+The controlled spectral Forgetting Machine is **parked, not discarded**. Its
+executable prototype, tests, threat-boundary documentation, and experimental DSN
+remain in the repository. It demonstrates deletion inside one trusted external
+memory vault; it does not test the active capacity-migration thesis or establish
+that model weights have forgotten information.
+
+Return to this track after a learned MLX `A -> B -> A` model—not only the
+orthogonal reference mechanism—passes the learned-model promotion gate and there is a
+concrete need to compare dormant model capacity, overwritten capacity, and
+governed external deletion. An explicit project-priority decision can also
+unpark it. The durable parking record is
+[`codex/parking-lot.md`](codex/parking-lot.md), and the full boundary is in
+[`docs/forgetting_machine.md`](docs/forgetting_machine.md).
+
+The retained demonstration remains runnable:
+
+```bash
+uv run python scripts/forgetting_machine_demo.py \
+  --out-json out/forgetting_machine_demo.json \
+  --out-html out/forgetting_machine_demo.html
+```
+
+Do not promote this track back into the Current Thesis without updating its DSN
+status and recording new evidence in the canonical decision index.
 
 ## LoRA Skill Packs
 - Default Gemma 4 base: `mlx-community/gemma-4-12B-mxfp8`. It keeps the unified any-to-any MLX architecture while roughly halving the local footprint versus bf16. Use `mlx-community/gemma-4-12B-bf16` as a reference/high-fidelity checkpoint for rank probes or regression comparisons when memory allows.
