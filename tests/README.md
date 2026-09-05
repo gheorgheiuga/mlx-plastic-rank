@@ -25,6 +25,9 @@ The first command runs only research; the second runs every suite. Normal CI
 runs the default suites. A manual CI run can also select the research suite.
 Run research checks when changing its source or shared mechanics it exercises;
 passing them does not reopen a parked track or prove a quality benefit.
+Research also contains manager-policy checks, exact Pop-contract cases and the
+stored-data baseline diagnostic's isolation/failure checks. These exercise the
+repository-only `research/` package. Core import checks reject a dependency on it.
 
 Place new tests in the directory matching the behavior they protect. Test public
 behavior, meaningful failure modes and numerical edge cases. Use parameterized

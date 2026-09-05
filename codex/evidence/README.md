@@ -9,7 +9,28 @@ Evidence snapshots are not release-grade datasets. Check each snapshot's
 source dataset and license metadata before using a result for product or
 commercial claims.
 
-`fault_codes_paired_control_screen_seed42.json` is the current strongest local
+## Current bounded evidence
+
+- [Baseline diagnosis](../research/baseline-diagnostic-results.md) and
+  [measurements](baseline_diagnostic_seed31_35.json): all ten dense references
+  pass; all ten broken-pairing controls fail. This selects a factorized-baseline
+  question and does not establish controller benefit.
+- [Forward workspace](forward_workspace_20260905.json): twelve isolated synthetic
+  records, including timing follow-ups. Temporary allocations fall; gated resident
+  storage is unchanged and no consistent gated latency improvement is established.
+- [Gradient-agreement development](gradient_agreement_development_seed31_35.json):
+  45 finite runs, failed readiness and sufficient-capacity gates. Remains parked.
+- [Compact SVD workspace](svd_workspace_20260905.json): bounded numerical and
+  allocation evidence, without a downstream quality claim.
+
+## Historical observations
+
+The model-backed screens below retain the initialization and provenance
+qualifications in [ADR-0012](../decisions.md).
+Their old promotion fields are preserved; they do not satisfy today's evidence
+requirements retroactively.
+
+`fault_codes_paired_control_screen_seed42.json` was an earlier local diagnostic
 artifact. It records a single-seed paired falsification screen with same-budget
 random, shuffled, target-constant, and cross-domain controls. Its promotion gate
 passed, but its evidence status remains diagnostic until repeated across seeds,

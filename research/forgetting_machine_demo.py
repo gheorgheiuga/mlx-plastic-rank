@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
-from mlx_plastic_rank.forgetting_vault import (
+from research.forgetting_vault import (
     DeletionCertificate,
     ForgetPolicy,
     ForgettingVault,

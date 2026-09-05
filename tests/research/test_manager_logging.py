@@ -10,7 +10,7 @@ import mlx.nn as nn
 
 def test_manager_writes_jsonl_and_sleep_changes():
     from mlx_plastic_rank.lowrank import PlasticBlock
-    from mlx_plastic_rank.plasticity_manager import PlasticityManager
+    from research.plasticity_manager import PlasticityManager
 
     d_model = 64
     model = nn.Sequential(PlasticBlock(d_model))

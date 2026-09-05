@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from mlx_plastic_rank.packs.capacity_migration import (
+from research.capacity_migration import (
     CONDITIONS,
     BenchmarkConfig,
     ConservedAllocator,
@@ -11,7 +11,7 @@ from mlx_plastic_rank.packs.capacity_migration import (
     run_benchmark,
     write_artifacts,
 )
-from scripts.capacity_migration_benchmark import main
+from research.capacity_migration_benchmark import main
 
 
 def _small_report():

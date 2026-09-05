@@ -55,8 +55,8 @@ def _stable_rank_from_singulars(singular_values: mx.array) -> float:
     return fro2 / (top * top)
 
 
-def _lowrank_singular_values(left: mx.array, right: mx.array) -> mx.array:
-    """Return non-zero singular values of ``left @ right`` using a small core."""
+def _lowrank_svd(left: mx.array, right: mx.array) -> tuple[mx.array, mx.array, mx.array]:
+    """Decompose the actual update through a small core, preserving its bases."""
 
     if len(left.shape) != 2 or len(right.shape) != 2:
         raise ValueError("Low-rank factors must be rank-2 arrays")
@@ -65,47 +65,18 @@ def _lowrank_singular_values(left: mx.array, right: mx.array) -> mx.array:
             f"Low-rank factor mismatch: left columns {left.shape[1]} != right rows {right.shape[0]}"
         )
     if _numel(left) == 0 or _numel(right) == 0:
-        return mx.zeros((0,), dtype=mx.float32)
+        return _empty_matrix(int(left.shape[0]), 0), mx.zeros((0,)), _empty_matrix(int(right.shape[1]), 0)
 
-    _, r_left = mx.linalg.qr(left, stream=CPU_DEVICE)
-    _, r_right_t = mx.linalg.qr(mx.transpose(right), stream=CPU_DEVICE)
+    q_left, r_left = mx.linalg.qr(left, stream=CPU_DEVICE)
+    q_right, r_right_t = mx.linalg.qr(mx.transpose(right), stream=CPU_DEVICE)
     core = mx.matmul(r_left, mx.transpose(r_right_t))
-    _, singulars, _ = mx.linalg.svd(core, stream=CPU_DEVICE)
-    return singulars.astype(mx.float32)
+    u, singulars, vh = mx.linalg.svd(core, stream=CPU_DEVICE)
+    return q_left @ u, singulars.astype(mx.float32), q_right @ vh.T
 
 
 def _factor_rank(left: mx.array, right: mx.array, rank_tol: float) -> tuple[int, mx.array]:
-    singulars = _lowrank_singular_values(left, right)
+    _, singulars, _ = _lowrank_svd(left, right)
     return _relative_rank(singulars, rank_tol), singulars
-
-
-def _basis(matrix: mx.array, rank_tol: float) -> mx.array:
-    if _numel(matrix) == 0:
-        return _empty_matrix(int(matrix.shape[0]), 0)
-    u, singulars, _ = mx.linalg.svd(matrix, stream=CPU_DEVICE)
-    rank = _relative_rank(singulars, rank_tol)
-    return u[:, :rank].astype(mx.float32)
-
-
-def _column_basis(left: mx.array, right: mx.array, rank_tol: float) -> mx.array:
-    if _numel(right) == 0:
-        return _empty_matrix(int(left.shape[0]), 0)
-    u_right, singulars, _ = mx.linalg.svd(right, stream=CPU_DEVICE)
-    rank = _relative_rank(singulars, rank_tol)
-    if rank == 0:
-        return _empty_matrix(int(left.shape[0]), 0)
-    return _basis(mx.matmul(left, u_right[:, :rank]), rank_tol)
-
-
-def _row_basis(left: mx.array, right: mx.array, rank_tol: float) -> mx.array:
-    if _numel(left) == 0:
-        return _empty_matrix(int(right.shape[1]), 0)
-    _, singulars, vh_left = mx.linalg.svd(left, stream=CPU_DEVICE)
-    rank = _relative_rank(singulars, rank_tol)
-    if rank == 0:
-        return _empty_matrix(int(right.shape[1]), 0)
-    row_samples = mx.matmul(vh_left[:rank, :], right)
-    return _basis(mx.transpose(row_samples), rank_tol)
 
 
 def _union_rank(left_basis: mx.array, right_basis: mx.array, rank_tol: float) -> int:
@@ -325,22 +296,20 @@ def compare_pack_rank_ledgers(
     for key in shared:
         left_a, left_b, _, left_declared, _ = left_updates[key]
         right_a, right_b, _, right_declared, _ = right_updates[key]
-        left_rank, left_singulars = _factor_rank(left_a, left_b, rank_tol)
-        right_rank, right_singulars = _factor_rank(right_a, right_b, rank_tol)
+        left_col, left_singulars, left_row = _lowrank_svd(left_a, left_b)
+        right_col, right_singulars, right_row = _lowrank_svd(right_a, right_b)
+        left_rank = _relative_rank(left_singulars, rank_tol)
+        right_rank = _relative_rank(right_singulars, rank_tol)
         sum_rank, sum_singulars = _factor_rank(
             mx.concatenate([left_a, right_a], axis=1),
             mx.concatenate([left_b, right_b], axis=0),
             rank_tol,
         )
 
-        left_col = _column_basis(left_a, left_b, rank_tol)
-        right_col = _column_basis(right_a, right_b, rank_tol)
-        column_union = _union_rank(left_col, right_col, rank_tol)
+        column_union = _union_rank(left_col[:, :left_rank], right_col[:, :right_rank], rank_tol)
         column_overlap = max(0, left_rank + right_rank - column_union)
 
-        left_row = _row_basis(left_a, left_b, rank_tol)
-        right_row = _row_basis(right_a, right_b, rank_tol)
-        row_union = _union_rank(left_row, right_row, rank_tol)
+        row_union = _union_rank(left_row[:, :left_rank], right_row[:, :right_rank], rank_tol)
         row_overlap = max(0, left_rank + right_rank - row_union)
 
         left_fro = _fro_from_singulars(left_singulars)

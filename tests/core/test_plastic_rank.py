@@ -6,13 +6,11 @@ import importlib
 
 def test_legacy_wrapper_exports_canonical_tools():
     from mlx_plastic_rank.lowrank import PlasticBlock, RankLayer
-    from mlx_plastic_rank.plasticity_manager import PlasticityManager
     from mlx_plastic_rank.rank_select import stable_rank
 
     mod = importlib.import_module("plastic_rank")
     assert mod.RankLayer is RankLayer
     assert mod.PlasticBlock is PlasticBlock
-    assert mod.PlasticityManager is PlasticityManager
     assert mod.stable_rank is stable_rank
 
 

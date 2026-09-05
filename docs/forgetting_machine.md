@@ -30,7 +30,7 @@ inspect or erase transformer weights, embeddings outside the vault, caller-owned
 objects, logs, caches, backups, or residual copies in process memory.
 
 The implementation is in
-`src/mlx_plastic_rank/forgetting_vault.py`; focused behavioral and tamper tests
+`research/forgetting_vault.py`; focused behavioral and tamper tests
 are in `tests/research/test_forgetting_vault.py`.
 
 ## Interface
@@ -202,7 +202,7 @@ uv run --locked pytest -q tests/research/test_forgetting_vault.py
 Run the stage narrative and produce self-contained evidence artifacts:
 
 ```bash
-uv run python scripts/forgetting_machine_demo.py \
+uv run --locked python -m research.forgetting_machine_demo \
   --out-json out/forgetting_machine_demo.json \
   --out-html out/forgetting_machine_demo.html
 ```
@@ -220,7 +220,7 @@ records. Their overlap is `alice-medical`; their union also includes
 uv run python - <<'PY'
 import json
 
-from mlx_plastic_rank.forgetting_vault import (
+from research.forgetting_vault import (
     ForgetPolicy,
     ForgettingVault,
     MemoryRecord,
@@ -259,7 +259,7 @@ To demonstrate tamper detection, add this after creating a certificate:
 
 ```python
 import json
-from mlx_plastic_rank.forgetting_vault import DeletionCertificate
+from research.forgetting_vault import DeletionCertificate
 
 tampered_payload = json.loads(medical.to_json())
 tampered_payload["active_records_after"] = 999

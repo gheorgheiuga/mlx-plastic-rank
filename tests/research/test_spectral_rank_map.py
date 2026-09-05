@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from mlx_plastic_rank.packs.io import PackMetadata, save_pack, save_pack_metadata
-from mlx_plastic_rank.packs.rank_map import (
+from research.rank_map import (
     SpectralRankMapConfig,
     build_spectral_rank_map_candidate,
 )

@@ -1,7 +1,7 @@
 [project]
 name = "mlx-plastic-rank"
 version = "0.1.1"
-description = "MLX low-rank layers and adapter packs, with experimental capacity-migration research"
+description = "MLX low-rank layers and static adapter packs"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -34,6 +34,7 @@ packs = [
 [tool.pytest.ini_options]
 testpaths = ["tests/core", "tests/packs", "tests/tools"]
 addopts = "-q"
+pythonpath = [".", "tests/packs"]
 
 [project.scripts]
 packs = "mlx_plastic_rank.packs.cli:main"

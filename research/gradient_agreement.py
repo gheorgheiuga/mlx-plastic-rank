@@ -23,7 +23,7 @@ from .learned_capacity_migration import (
     _require_finite,
     _TinyDenseRoutedModel,
 )
-from .manager import LoRAManager
+from .rank_manager import ResearchLoRAManager as LoRAManager
 
 Slot = tuple[str, int]
 

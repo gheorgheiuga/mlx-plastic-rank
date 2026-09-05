@@ -1,18 +1,22 @@
 # DSN Log
 
+- **DSN-20260905-06** — Pop's common-operator subspace contract *(Experimental; mathematical implementation checks only)*
+  - Summary: Defines the exact common-matrix identity, numerical rank limits, repeated-eigenspace/Jordan cases, and a conditional shared-subspace hypothesis with same-basis falsification controls. Parked research moves outside the installed prototype.
+  - Link: `codex/dsn/dsn-20260905-pop-mathematical-contract.md`
+
 Track open and closed Decision Support Notes here for quick discovery. Link each entry to the corresponding markdown file under `codex/dsn/`.
 
 Current scope follows DSN-20260905-04; older directions below are historical
 unless explicitly resumed. Their numerical observations do not override the
 September initialization/provenance qualifications or failed research gates.
 
-- **DSN-20260905-05** — Diagnose baseline validity before controller work *(Proposed; not implemented or run)*
-  - Summary: One bounded dense routed least-squares diagnostic on saved seeds 31–35, with train/held-out isolation and a broken-pairing control. Its result chooses the next fixture or optimization question; it does not admit a controller.
+- **DSN-20260905-05** — Diagnose baseline validity before controller work *(Experimental; diagnostic completed, all declared gates passed)*
+  - Summary: Twenty fixed dense routed fits on saved seeds 31–35. All ten references exceeded 0.9999999999999 held-out score; all ten broken-pairing controls failed the 0.50 gate. Receipt and saved-coefficient audits passed. Next question: factorized capacity, optimization and allocation; no controller admission or reserved seeds.
   - Link: `codex/dsn/dsn-20260905-baseline-validity-diagnostic.md`
 
 - **DSN-20260905-04** — Consolidate around verified mechanics *(Accepted as engineering/scope decision; scientific benefit remains Experimental)*
   - Summary: One bounded lifecycle demo and one pack CLI; retire duplicate entry points, remove unused symbolic dependencies and make dataset tooling optional. Preserve failed evidence and park expansion. Prepare the baseline diagnostic before more controller work.
-  - Test follow-through: Separate 259 default checks from 71 explicit research regressions; merge two weak smoke checks and consolidate parser scenarios. This changes maintenance scope, not research evidence.
+  - Initial test follow-through: Separated 259 default checks from 71 explicit research regressions; merged two weak smoke checks and consolidated parser scenarios. Later source consolidation also moves manager policies to research, excludes research from the wheel, requires fixed allocation, defaults to matched component initialization, and repairs validation/numerical contracts. Factored forwards lower measured temporary allocations; scientific benefit remains unproven.
   - Link: `codex/dsn/dsn-20260905-prototype-consolidation.md`
 
 - **DSN-20260905-03** — Gradient-agreement controller admission test *(Experimental; implementation verified, development validity failed)*

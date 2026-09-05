@@ -1,0 +1,583 @@
+{
+  "protocol": "DSN-20260905-05",
+  "source_package": "out/baseline_diagnostic/stored_development_20260905",
+  "receipts": {
+    "out/capacity_migration/gradient_agreement_v1/development_20260905": {
+      "receipt_sha256": "46e38b4684226981b05e1def0253671752454d7aff79cfdc6d0fa415656a5c6e",
+      "verified_entries": 81
+    },
+    "out/baseline_diagnostic/stored_development_20260905": {
+      "receipt_sha256": "0706a63a3bed5f9ca476a9f1996f4a79493128315d05c0a97010da4070873381",
+      "verified_entries": 37
+    }
+  },
+  "summary_sha256": "84ce1f87961fdee04e4d17386b8bc7178a4e2a8c5954b66476a7620885f8c109",
+  "provenance": {
+    "started_utc": "2026-09-05T07:45:53.229275+00:00",
+    "generator": "research/baseline_diagnostic.py",
+    "data_origin": "stored repository-authored synthetic arrays; no external dataset or weights",
+    "python": "3.13.14 (main, Jun 23 2026, 15:20:43) [Clang 22.1.3 ]",
+    "numpy": "2.3.3",
+    "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "git_revision": "1c308ece3f1362ea39299a6a8f01af9b12b6236e",
+    "input_sha256": {
+      "31": "a24b1372f44a14c6331691e363e6747b1f633e625ac46a28e90606ec058051cf",
+      "32": "b3d9d666b176bd90757255bd906803b9a6316ec1df4078dec2942bcf68e29735",
+      "33": "706b85af57b39da3d445aaed36d964b742f0354bdd0c2e90a12219963b90af75",
+      "34": "a6d5509e653887c23495af13c988a5f915f329da67467f6c50d9bbe7e5e13504",
+      "35": "97f4ce19e003f55629ef53a693501bfc0a94b9f1ed7785763512653094511cf4"
+    },
+    "source_sha256": {
+      ".python-version": "02e735b3dfe1c32833eb550b7ff8ffa17f5f2bc3fa1e7bae61a8f5a3883ce398",
+      "NOTICE.md": "15f950697c22f119597c70bffeab7de806d308231279d28c58fb890a366a26a8",
+      "codex/dsn/dsn-20260905-baseline-validity-diagnostic.md": "f026a829542bf11eb4639ecc1347112e36b9fa942dcd1e269ea13352d8fde176",
+      "pyproject.toml": "a0f6ff98831e8df65634c6cfbb2130a01d64dcc7a04c49571e8cf3b4db5635d1",
+      "research/__init__.py": "7d4c756fc584fb967d9a1607462667b3b33b906f82753aa4250b0beeab18a5a2",
+      "research/baseline_diagnostic.py": "81993f80b7b22720654490594ce3e61ddf5ae2c234501851162299d230dcd2f9",
+      "tests/research/test_baseline_diagnostic.py": "9826b6e72d68c6cfc36216b8598a9998f1b37ba5ff4aa4a4e8e6104df3091f71",
+      "uv.lock": "0a8e059e7ae38308bcb8a8266bd0d6c1f4b476a516836d5bda38242ebd079820"
+    },
+    "evidence_seeds_used": []
+  },
+  "audit": {
+    "method": "Verified both complete receipts, loaded all 20 saved coefficients, independently concatenated routed features and recomputed 40 training/held-out measurements; absolute differences below 1e-10.",
+    "verified_measurements": 40
+  },
+  "gates": {
+    "reference_train_and_heldout_min": 0.95,
+    "shifted_heldout_max_exclusive": 0.5
+  },
+  "checks": {
+    "broken_pairing_fails": true,
+    "complete_finite_matrix": true,
+    "reference_heldout": true,
+    "reference_training": true
+  },
+  "decision": "investigate_factorized_optimization_and_allocation",
+  "runtime_seconds": 0.06576937501085922,
+  "scope": "unconstrained development learnability diagnostic; no controller inference",
+  "controller_admission": false,
+  "uncertainty": "All five declared development fixtures; per-seed results, no population inference or confidence intervals.",
+  "rows": [
+    {
+      "seed": 31,
+      "task": "A",
+      "condition": "reference",
+      "train": {
+        "mse": 1.6344981710426717e-16,
+        "score": 0.9999999999999992,
+        "zero_output_mse": 0.21663435450939136
+      },
+      "heldout": {
+        "mse": 1.890257202365076e-15,
+        "score": 0.9999999999999817,
+        "zero_output_mse": 0.10305491091189996
+      },
+      "fit_sha256": "f8d3c0bac119b5e4fe2c002477bf22f318dfd388be42cbc6e49de31083c6abf1",
+      "solver": {
+        "condition_number": 47.2137614547674,
+        "cutoff": 3.368120134466791e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 47.2137614547674
+      }
+    },
+    {
+      "seed": 31,
+      "task": "A",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.39556804979921595,
+        "score": -0.8259710039760457,
+        "zero_output_mse": 0.21663435450939136
+      },
+      "heldout": {
+        "mse": 1.433977162905351,
+        "score": -12.914690238597517,
+        "zero_output_mse": 0.10305491091189996
+      },
+      "fit_sha256": "cdede69cd47cf5e87e8bfaef4e1542e3a28c1fdca3970c209c10ee05bab62b96",
+      "solver": {
+        "condition_number": 47.2137614547674,
+        "cutoff": 3.368120134466791e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 47.2137614547674
+      }
+    },
+    {
+      "seed": 31,
+      "task": "B",
+      "condition": "reference",
+      "train": {
+        "mse": 6.838875945978924e-17,
+        "score": 0.9999999999999996,
+        "zero_output_mse": 0.16567310448733333
+      },
+      "heldout": {
+        "mse": 3.153754618369083e-15,
+        "score": 0.9999999999999686,
+        "zero_output_mse": 0.10050878695399423
+      },
+      "fit_sha256": "047f2a178c4291c76a104cc16671bf4c2c4f1107870a81f01f01e1038f5aa90e",
+      "solver": {
+        "condition_number": 19.55671145056483,
+        "cutoff": 2.8020241866136468e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 19.55671145056483
+      }
+    },
+    {
+      "seed": 31,
+      "task": "B",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.25860940490919243,
+        "score": -0.5609619057326509,
+        "zero_output_mse": 0.16567310448733333
+      },
+      "heldout": {
+        "mse": 0.6241940430335683,
+        "score": -5.210343015275668,
+        "zero_output_mse": 0.10050878695399423
+      },
+      "fit_sha256": "a84b82ab465a479f092fb9303f9f4f090f3652b83cd7cec04d296a5db3962424",
+      "solver": {
+        "condition_number": 19.55671145056483,
+        "cutoff": 2.8020241866136468e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 19.55671145056483
+      }
+    },
+    {
+      "seed": 32,
+      "task": "A",
+      "condition": "reference",
+      "train": {
+        "mse": 2.956522931005459e-17,
+        "score": 0.9999999999999996,
+        "zero_output_mse": 0.06967187802831099
+      },
+      "heldout": {
+        "mse": 1.972744616590579e-15,
+        "score": 0.9999999999999848,
+        "zero_output_mse": 0.1292584734059322
+      },
+      "fit_sha256": "2dd6a9de9083f9666fb0415ace327ff59e0168fe782af4d89168873e1b8a6b39",
+      "solver": {
+        "condition_number": 32.19433317251241,
+        "cutoff": 2.679041207278105e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 32.19433317251241
+      }
+    },
+    {
+      "seed": 32,
+      "task": "A",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.12230243504408134,
+        "score": -0.7554060333264458,
+        "zero_output_mse": 0.06967187802831099
+      },
+      "heldout": {
+        "mse": 0.3771574294257262,
+        "score": -1.9178545861459706,
+        "zero_output_mse": 0.1292584734059322
+      },
+      "fit_sha256": "3126f7c60d304aa4a36fd093427fbaaa9a31e393613883507f2acc20455655f9",
+      "solver": {
+        "condition_number": 32.19433317251241,
+        "cutoff": 2.679041207278105e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 32.19433317251241
+      }
+    },
+    {
+      "seed": 32,
+      "task": "B",
+      "condition": "reference",
+      "train": {
+        "mse": 6.267414799800882e-17,
+        "score": 0.9999999999999996,
+        "zero_output_mse": 0.1540366301065783
+      },
+      "heldout": {
+        "mse": 2.2698629449139724e-15,
+        "score": 0.9999999999999861,
+        "zero_output_mse": 0.16418320878676107
+      },
+      "fit_sha256": "1ba456001f3de222c80114aa3ecc7cb0079447b8cf88702cc1798db9591edd30",
+      "solver": {
+        "condition_number": 20.648271026850267,
+        "cutoff": 3.051711598776796e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 20.648271026850267
+      }
+    },
+    {
+      "seed": 32,
+      "task": "B",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.26191886941895726,
+        "score": -0.7003674336275403,
+        "zero_output_mse": 0.1540366301065783
+      },
+      "heldout": {
+        "mse": 1.6319344767564707,
+        "score": -8.93971605754158,
+        "zero_output_mse": 0.16418320878676107
+      },
+      "fit_sha256": "1c93bacf733fc67a3ce6ba38494ebeccc278501de8449a22aa73949abc966e4d",
+      "solver": {
+        "condition_number": 20.648271026850267,
+        "cutoff": 3.051711598776796e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 20.648271026850267
+      }
+    },
+    {
+      "seed": 33,
+      "task": "A",
+      "condition": "reference",
+      "train": {
+        "mse": 1.8385204190649935e-17,
+        "score": 0.9999999999999998,
+        "zero_output_mse": 0.08432394097642659
+      },
+      "heldout": {
+        "mse": 2.5087401008369004e-15,
+        "score": 0.9999999999999908,
+        "zero_output_mse": 0.27357129117846374
+      },
+      "fit_sha256": "4ca44f281740afca87ad996058f0ba406e5b149c740945cdcb5efe52b5f3e348",
+      "solver": {
+        "condition_number": 19.674484419314588,
+        "cutoff": 2.934351826739284e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 19.674484419314588
+      }
+    },
+    {
+      "seed": 33,
+      "task": "A",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.15930483506688778,
+        "score": -0.8892005428378007,
+        "zero_output_mse": 0.08432394097642659
+      },
+      "heldout": {
+        "mse": 0.6013827114131916,
+        "score": -1.198266889857535,
+        "zero_output_mse": 0.27357129117846374
+      },
+      "fit_sha256": "98b67758787d7dcf6c4605a403b53ed2179dac4bd10c7a7c1c0a5869ee20a63f",
+      "solver": {
+        "condition_number": 19.674484419314588,
+        "cutoff": 2.934351826739284e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 19.674484419314588
+      }
+    },
+    {
+      "seed": 33,
+      "task": "B",
+      "condition": "reference",
+      "train": {
+        "mse": 1.7847503484458454e-16,
+        "score": 0.9999999999999994,
+        "zero_output_mse": 0.3459135611960495
+      },
+      "heldout": {
+        "mse": 1.7410466666310549e-15,
+        "score": 0.9999999999999891,
+        "zero_output_mse": 0.1604458516536997
+      },
+      "fit_sha256": "3e20533bd3c999778a6c59be43b6c5081950daf72fd9d1c684ad9afebdcc4bfe",
+      "solver": {
+        "condition_number": 34.03520148336781,
+        "cutoff": 3.5721268489117954e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 34.03520148336781
+      }
+    },
+    {
+      "seed": 33,
+      "task": "B",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.6659996062951982,
+        "score": -0.9253353467623582,
+        "zero_output_mse": 0.3459135611960495
+      },
+      "heldout": {
+        "mse": 1.5481157731429587,
+        "score": -8.64883639674495,
+        "zero_output_mse": 0.1604458516536997
+      },
+      "fit_sha256": "0c5439115677a87cb407c6cf9fdc4dfb3ee861471405cefa30a9dd2a091696e4",
+      "solver": {
+        "condition_number": 34.03520148336781,
+        "cutoff": 3.5721268489117954e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 34.03520148336781
+      }
+    },
+    {
+      "seed": 34,
+      "task": "A",
+      "condition": "reference",
+      "train": {
+        "mse": 5.5023432303229374e-17,
+        "score": 0.9999999999999994,
+        "zero_output_mse": 0.10260051254780556
+      },
+      "heldout": {
+        "mse": 2.3945676766477196e-15,
+        "score": 0.9999999999999803,
+        "zero_output_mse": 0.12205944502045969
+      },
+      "fit_sha256": "d3cb01f75da7a5139801c01798f979a39d2c2f55d211a1c91bb0c282de0cfa38",
+      "solver": {
+        "condition_number": 40.641213497511075,
+        "cutoff": 3.279750627924503e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 40.641213497511075
+      }
+    },
+    {
+      "seed": 34,
+      "task": "A",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.17587801887189866,
+        "score": -0.7142021467967841,
+        "zero_output_mse": 0.10260051254780556
+      },
+      "heldout": {
+        "mse": 0.869960212741157,
+        "score": -6.127348584907408,
+        "zero_output_mse": 0.12205944502045969
+      },
+      "fit_sha256": "67595d60889a03b4a3d171c2e7c7cd8ecd3004e4708b45f490f71486d437ac15",
+      "solver": {
+        "condition_number": 40.641213497511075,
+        "cutoff": 3.279750627924503e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 40.641213497511075
+      }
+    },
+    {
+      "seed": 34,
+      "task": "B",
+      "condition": "reference",
+      "train": {
+        "mse": 2.9218768479469696e-17,
+        "score": 0.9999999999999998,
+        "zero_output_mse": 0.12186858669053102
+      },
+      "heldout": {
+        "mse": 2.1600224863103523e-15,
+        "score": 0.9999999999999821,
+        "zero_output_mse": 0.12114135672165853
+      },
+      "fit_sha256": "898ed0041eb1880646d2c1592f3562e786106ca40a00ca38b7d48050149861a5",
+      "solver": {
+        "condition_number": 23.008520537727186,
+        "cutoff": 2.8195710650768988e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 23.008520537727186
+      }
+    },
+    {
+      "seed": 34,
+      "task": "B",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.21775191434262417,
+        "score": -0.7867763978881288,
+        "zero_output_mse": 0.12186858669053102
+      },
+      "heldout": {
+        "mse": 0.2349974032559271,
+        "score": -0.9398610814296136,
+        "zero_output_mse": 0.12114135672165853
+      },
+      "fit_sha256": "eca122ec3506681de355e07e7cc670c18adf695c9cf4cb76469a926b4d7e86d0",
+      "solver": {
+        "condition_number": 23.008520537727186,
+        "cutoff": 2.8195710650768988e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 23.008520537727186
+      }
+    },
+    {
+      "seed": 35,
+      "task": "A",
+      "condition": "reference",
+      "train": {
+        "mse": 3.1337272540948573e-17,
+        "score": 0.9999999999999999,
+        "zero_output_mse": 0.19328049950246898
+      },
+      "heldout": {
+        "mse": 1.2670767086170318e-15,
+        "score": 0.9999999999999759,
+        "zero_output_mse": 0.052547518756929666
+      },
+      "fit_sha256": "6aa90894982396ef96f36acf2dc7a59d0556226c004f32d8cae333346c7b7ba4",
+      "solver": {
+        "condition_number": 26.36279823522078,
+        "cutoff": 2.9664445306060655e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 26.36279823522078
+      }
+    },
+    {
+      "seed": 35,
+      "task": "A",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.35834776191568746,
+        "score": -0.8540295727614771,
+        "zero_output_mse": 0.19328049950246898
+      },
+      "heldout": {
+        "mse": 0.9798532591411132,
+        "score": -17.64699385091129,
+        "zero_output_mse": 0.052547518756929666
+      },
+      "fit_sha256": "91e2c3fe1afa620525124d1a9dcad09db2cd0a57aa0f42ad9102ea6c8559f65f",
+      "solver": {
+        "condition_number": 26.36279823522078,
+        "cutoff": 2.9664445306060655e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 26.36279823522078
+      }
+    },
+    {
+      "seed": 35,
+      "task": "B",
+      "condition": "reference",
+      "train": {
+        "mse": 6.377389275350713e-17,
+        "score": 0.9999999999999998,
+        "zero_output_mse": 0.2921495957025539
+      },
+      "heldout": {
+        "mse": 2.2599786470631993e-14,
+        "score": 0.999999999999925,
+        "zero_output_mse": 0.3010170618721081
+      },
+      "fit_sha256": "478b60122ec16de61d4de047b50425d329b93f920f279cb4bdb6282e41790871",
+      "solver": {
+        "condition_number": 74.48894666554307,
+        "cutoff": 3.410411260015684e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 74.48894666554307
+      }
+    },
+    {
+      "seed": 35,
+      "task": "B",
+      "condition": "shifted_pairing",
+      "train": {
+        "mse": 0.5354958044847219,
+        "score": -0.8329506949923215,
+        "zero_output_mse": 0.2921495957025539
+      },
+      "heldout": {
+        "mse": 4.271526699121291,
+        "score": -13.1903142385202,
+        "zero_output_mse": 0.3010170618721081
+      },
+      "fit_sha256": "2415a969e251949fa80a11e4a8fd7aece97abaee6d839be984271e21584dc70a",
+      "solver": {
+        "condition_number": 74.48894666554307,
+        "cutoff": 3.410411260015684e-14,
+        "design_shape": [
+          32,
+          24
+        ],
+        "numerical_rank": 24,
+        "retained_condition_number": 74.48894666554307
+      }
+    }
+  ]
+}

@@ -2,9 +2,9 @@ from typing import Dict, List, Optional
 
 import mlx.nn as nn
 
-from .lowrank import RankLayer
-from .rank_select import choose_rank
-from .utils import get_logger
+from mlx_plastic_rank.lowrank import RankLayer
+from mlx_plastic_rank.rank_select import choose_rank
+from mlx_plastic_rank.utils import get_logger
 
 
 class PlasticityManager:

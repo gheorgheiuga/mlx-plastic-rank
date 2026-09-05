@@ -1,3 +1,4 @@
+import json
 import types
 
 import numpy as np
@@ -235,3 +236,61 @@ def test_manager_set_dropout_rejects_invalid_values():
         manager.set_dropout(-0.01)
     with pytest.raises(PackApplicationError):
         manager.set_dropout(1.0)
+
+
+@pytest.mark.parametrize("changed_file", ["model-00002.safetensors", "config.json"])
+def test_complete_checkpoint_identity_rejects_changed_content(tmp_path, changed_file):
+    from mlx_plastic_rank.packs.provenance import content_sha256
+
+    checkpoint = tmp_path / "base"
+    checkpoint.mkdir()
+    for name in ("model-00001.safetensors", "model-00002.safetensors", "config.json"):
+        (checkpoint / name).write_bytes(b"original")
+    pack_dir, _ = _write_pack(tmp_path, base_model="alias-a", base_checkpoint=checkpoint)
+    metadata = load_pack_metadata(pack_dir / "meta.json")
+    assert metadata.base_hash_version == 1
+    assert metadata.base_hash == content_sha256(checkpoint)
+    (checkpoint / changed_file).write_bytes(b"changed")
+    manager = LoRAManager(FusedModel(), base_model="alias-b", base_checkpoint=checkpoint)
+    with pytest.raises(PackApplicationError, match="Base hash mismatch"):
+        manager.apply_pack(pack_dir)
+
+
+def test_legacy_pack_requires_whole_checkpoint_provenance(tmp_path):
+    from mlx_plastic_rank.packs.provenance import content_sha256
+
+    checkpoint = tmp_path / "model.safetensors"
+    checkpoint.write_bytes(b"checkpoint")
+    pack_dir, _ = _write_pack(tmp_path, base_checkpoint=checkpoint)
+    path = pack_dir / "meta.json"
+    metadata = json.loads(path.read_text())
+    metadata.pop("base_hash_version")
+    path.write_text(json.dumps(metadata))
+    manager = LoRAManager(FusedModel(), base_checkpoint=checkpoint)
+    with pytest.raises(PackApplicationError, match="Legacy pack"):
+        manager.apply_pack(pack_dir)
+    metadata["training_config"] = {"provenance": {"model_sha256": content_sha256(checkpoint)}}
+    path.write_text(json.dumps(metadata))
+    assert manager.apply_pack(pack_dir).base_hash_version == 0
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), 70000.0])
+def test_invalid_factor_cannot_replace_active_pack_or_be_exported(tmp_path, bad_value):
+    from safetensors.numpy import save_file
+
+    valid_dir, _ = _write_pack(tmp_path / "valid")
+    bad_dir, tensors = _write_pack(tmp_path / "bad")
+    manager = LoRAManager(FusedModel())
+    manager.apply_pack(valid_dir)
+    active = dict(manager.iter_adapters())
+    key = "blocks.0.attn.q_proj.lora.B"
+    tensors[key] = tensors[key].astype(np.float32)
+    tensors[key][0, 0] = bad_value
+    save_file(tensors, str(bad_dir / "pack.safetensors"))  # Deliberately malformed external artifact.
+    with pytest.raises(PackApplicationError, match="finite"):
+        manager.apply_pack(bad_dir)
+    assert dict(manager.iter_adapters()) == active
+    next(iter(active.values())).B = mx.array(tensors[key])
+    with pytest.raises(PackApplicationError, match="finite"):
+        manager.export_active_pack("invalid-export", tmp_path)
+    assert not (tmp_path / "invalid-export").exists()

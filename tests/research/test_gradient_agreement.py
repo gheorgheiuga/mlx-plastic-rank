@@ -4,7 +4,7 @@ import mlx.core as mx
 import numpy as np
 import pytest
 
-from mlx_plastic_rank.packs.gradient_admission import (
+from research.gradient_admission import (
     CONDITIONS,
     load_spec,
     resolved_seeds,
@@ -12,7 +12,7 @@ from mlx_plastic_rank.packs.gradient_admission import (
     selection,
     summarize,
 )
-from mlx_plastic_rank.packs.gradient_agreement import (
+from research.gradient_agreement import (
     AuditedTrial,
     SelectionBatch,
     agreement_score,

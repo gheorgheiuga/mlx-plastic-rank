@@ -121,3 +121,18 @@ def test_compare_pack_rank_ledgers_reports_overlap_for_identical_packs(tmp_path:
     csv_rows = comparison_rows_for_csv(report)
     assert csv_rows[0]["adapter"] == key
     assert "composition_singular_values" not in csv_rows[0]
+
+
+def test_subspace_overlap_is_invariant_to_reciprocal_factor_scaling(tmp_path):
+    key = "blocks.0.attn.q_proj"
+    identity = np.eye(2, dtype=np.float32)
+    ordinary = _write_pack(tmp_path, "ordinary", _adapter_tensors(key, identity, identity, 4), {key: 2}, {key: 4})
+    rescaled = _write_pack(tmp_path, "rescaled", _adapter_tensors(
+        key, np.diag([1/1024, 1024]), np.diag([1024, 1/1024]), 4,
+    ), {key: 2}, {key: 4})
+    for left, right in ((ordinary, rescaled), (rescaled, rescaled)):
+        pair = compare_pack_rank_ledgers(left, right)["pairs"][0]
+        assert pair["left_effective_rank"] == pair["right_effective_rank"] == 2
+        assert pair["column_union_rank"] == pair["row_union_rank"] == 2
+        assert pair["column_overlap_rank"] == pair["row_overlap_rank"] == 2
+        assert math.isclose(pair["fro_cosine"], 1, abs_tol=1e-6)

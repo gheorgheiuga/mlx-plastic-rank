@@ -1,6 +1,6 @@
 import json
 
-from scripts.forgetting_machine_demo import main, render_html, run_demo
+from research.forgetting_machine_demo import main, render_html, run_demo
 
 
 def test_demo_observes_query_removal_and_checks_policy_attestations():

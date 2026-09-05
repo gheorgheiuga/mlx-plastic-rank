@@ -23,7 +23,8 @@ download is needed. Restoration is approximate; the demo is not a learning resul
 
 | Location | Purpose |
 | --- | --- |
-| `src/mlx_plastic_rank/` | Low-rank and pack implementation |
+| `src/mlx_plastic_rank/` | Installed low-rank and fixed-allocation pack implementation |
+| `research/` | Repository-only experiments; excluded from the installed package |
 | `plastic_rank.py` | Bounded local lifecycle demo |
 | `tests/core/`, `tests/packs/`, `tests/tools/` | Default regression suite |
 | `tests/research/` | Parked experiment regressions, run explicitly |
@@ -35,7 +36,8 @@ See [test commands](tests/README.md) and [contributor guidance](CONTRIBUTING.md)
 
 The [runbook](codex/runbook.md#pack-workflow) covers training, inspection,
 application, held-out evaluation and proof reports using an existing compatible
-checkpoint. Begin with fixed rank and separate training/evaluation data.
+checkpoint. Specify a fixed rank or explicit rank map and separate training/evaluation
+data. New packs use matched `component-v1` initialization by default.
 
 Model-backed commands use `uv run --locked --extra packs packs …`. Dataset
 extraction and checkpoint compression use the optional `data` and `compress`
@@ -44,11 +46,17 @@ See [data guidance](data/README.md) and [artifact integrity](docs/experiment_int
 
 ## Research status
 
-Adaptive capacity migration and theorem-based rank selection remain unvalidated.
-Their source and evidence are retained in the [parked research register](codex/parking-lot.md).
-The next proposed experiment is one [baseline diagnostic](codex/dsn/dsn-20260905-baseline-validity-diagnostic.md)
-on existing data; further controller and large-model work depends on its outcome
-and the relevant research gates.
+Pop's papers provide exact subspace accounting for polynomials of one common
+operator. They do not supply a learning rule or establish useful rank allocation.
+The [mathematical contract](codex/dsn/dsn-20260905-pop-mathematical-contract.md)
+defines that boundary and the controls a future learning claim would need.
+
+The [dense baseline diagnostic](codex/research/baseline-diagnostic-results.md)
+passed on all five stored development seeds; all broken-pairing controls failed.
+The next question concerns factorized capacity, optimization and allocation.
+Adaptive controllers and selector studies remain in the
+[parked research register](codex/parking-lot.md), with source and replay guidance
+in [research/](research/README.md).
 
 The [consolidation DSN](codex/dsn/dsn-20260905-prototype-consolidation.md) defines
 current scope. The [decision index](codex/decisions.md) preserves the history.

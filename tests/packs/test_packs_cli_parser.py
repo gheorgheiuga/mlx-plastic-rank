@@ -12,21 +12,6 @@ EVAL = 'eval --base /local/checkpoint --data-path data/eval.jsonl'
 
 @pytest.mark.parametrize(("command", "expected"), [
     pytest.param(
-        CREATE + ' --rank-strategy stable',
-        {'rank_strategy': 'stable'},
-        id='create-accepts-rank-strategy',
-    ),
-    pytest.param(
-        CREATE,
-        {'rank_strategy': 'gram_energy'},
-        id='create-defaults-to-gram-energy-rank-strategy',
-    ),
-    pytest.param(
-        CREATE + ' --rank-strategy theorem',
-        {'rank_strategy': 'theorem'},
-        id='create-keeps-legacy-theorem-rank-strategy-alias',
-    ),
-    pytest.param(
         CREATE,
         {'loader': 'auto', 'layers': 'attn.q_proj,attn.k_proj,attn.v_proj'},
         id='create-keeps-lite-projection-default',
@@ -119,20 +104,6 @@ EVAL = 'eval --base /local/checkpoint --data-path data/eval.jsonl'
         id='ablation-report-accepts-pack-and-eval-inputs',
     ),
     pytest.param(
-        'rank-map spectral --source-pack hetero-source --q-spectral out/q.json --k-spectral'
-        ' out/k.json --v-spectral out/v.json --profile heavy --policy balanced --out'
-        ' out/rank-map.json',
-        {'command': 'rank-map',
-         'rank_map_command': 'spectral',
-         'source_pack': 'hetero-source',
-         'q_spectral': 'out/q.json',
-         'k_spectral': 'out/k.json',
-         'v_spectral': 'out/v.json',
-         'profile': 'heavy',
-         'out': 'out/rank-map.json'},
-        id='rank-map-spectral-accepts-probe-inputs',
-    ),
-    pytest.param(
         'rank-map budget-report --source-pack hetero-source --fixed-rank 16 --profile heavy'
         ' --out out/r16_budget.json --markdown out/r16_budget.md --rank-map-out'
         ' out/r16_rank_map.json',
@@ -208,28 +179,9 @@ EVAL = 'eval --base /local/checkpoint --data-path data/eval.jsonl'
         id='create-accepts-heavy-profile',
     ),
     pytest.param(
-        CREATE + ' --min-rank 16',
-        {'min_rank': 16},
-        id='create-accepts-min-rank',
-    ),
-    pytest.param(
         CREATE + ' --rank 8',
         {'rank': 8},
         id='create-accepts-explicit-rank',
-    ),
-    pytest.param(
-        CREATE + ' --rank 32 --dynamic-rank --dynamic-initial-rank 4 --dynamic-min-rank 2'
-        ' --dynamic-rank-interval 25 --dynamic-rank-warmup 50 --dynamic-grow-threshold 0.4'
-        ' --dynamic-prune-threshold 0.05',
-        {'rank': 32,
-         'dynamic_rank': True,
-         'dynamic_initial_rank': 4,
-         'dynamic_min_rank': 2,
-         'dynamic_rank_interval': 25,
-         'dynamic_rank_warmup': 50,
-         'dynamic_grow_threshold': 0.4,
-         'dynamic_prune_threshold': 0.05},
-        id='create-accepts-dynamic-rank-controls',
     ),
     pytest.param(
         'capabilities --json --check',
@@ -249,6 +201,9 @@ def test_parser_accepts_scenario(command, expected):
 @pytest.mark.parametrize("options", [
     pytest.param('--lora-dropout 1.0', id='create-rejects-invalid-dropout'),
     pytest.param('--rank 0', id='create-rejects-zero-explicit-rank'),
+    pytest.param('--rank-strategy theorem', id='create-rejects-parked-selector'),
+    pytest.param('--dynamic-rank', id='create-rejects-parked-controller'),
+    pytest.param('--lora-dropout nan', id='create-rejects-nonfinite-dropout'),
 ])
 def test_create_rejects_invalid_values(options):
     with pytest.raises(SystemExit) as error:
@@ -267,3 +222,12 @@ def test_route_parser_accepts_required_args(tmp_path):
     assert args.probe_forward is True
     assert args.domain_map == mapping
     assert args.input == requests
+
+
+def test_create_defaults_to_matched_initialization_and_requires_rank_before_loading():
+    from mlx_plastic_rank.packs.cli import cmd_create
+
+    args = build_parser().parse_args(shlex.split(CREATE))
+    assert args.initialization == "component-v1"
+    with pytest.raises(SystemExit, match="Choose a fixed"):
+        cmd_create(args)

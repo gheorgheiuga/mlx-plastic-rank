@@ -22,7 +22,6 @@ from .statistics import compare_answer_mode_metrics
 
 VALID_CANDIDATE_MODES = {
     "fixed_rank",
-    "dynamic_rank",
     "random_same_budget",
     "rank_map_from_candidate",
     "rank_map_from_pack",
@@ -549,7 +548,7 @@ def _create_command(spec: BakeoffSpec, candidate: BakeoffCandidate, *, force: bo
     if bool(_setting(raw, train, "chat_template", False)):
         command.append("--chat-template")
     _append_option(command, "--batch-seed", _setting(raw, train, "batch_seed", None))
-    _append_option(command, "--initialization", _setting(raw, train, "initialization", "legacy"))
+    _append_option(command, "--initialization", _setting(raw, train, "initialization", "component-v1"))
     _append_option(command, "--training-seed", _setting(raw, train, "training_seed", None))
     _append_option(command, "--batch-schedule", _setting(raw, train, "batch_schedule", None))
     if bool(_setting(raw, train, "train_fp16_fallback", False)):
@@ -557,16 +556,8 @@ def _create_command(spec: BakeoffSpec, candidate: BakeoffCandidate, *, force: bo
     if force:
         command.append("--force")
 
-    if candidate.mode in {"fixed_rank", "dynamic_rank"}:
+    if candidate.mode == "fixed_rank":
         command.extend(["--rank", str(_required_candidate_int(raw, "rank"))])
-    if candidate.mode == "dynamic_rank":
-        command.append("--dynamic-rank")
-        _append_option(command, "--dynamic-initial-rank", raw.get("dynamic_initial_rank"))
-        _append_option(command, "--dynamic-min-rank", raw.get("dynamic_min_rank"))
-        _append_option(command, "--dynamic-rank-warmup", raw.get("dynamic_rank_warmup"))
-        _append_option(command, "--dynamic-rank-interval", raw.get("dynamic_rank_interval"))
-        _append_option(command, "--dynamic-grow-threshold", raw.get("dynamic_grow_threshold"))
-        _append_option(command, "--dynamic-prune-threshold", raw.get("dynamic_prune_threshold"))
     elif candidate.mode == "rank_map_from_candidate":
         source_id = _required_candidate_text(raw, "rank_map_from_candidate")
         source = spec.candidates_by_id[source_id]
@@ -934,7 +925,7 @@ def _validate_candidate_mode(
     mode: str,
     seen: Mapping[str, BakeoffCandidate],
 ) -> None:
-    if mode in {"fixed_rank", "dynamic_rank"}:
+    if mode == "fixed_rank":
         _required_candidate_int(candidate, "rank")
     elif mode == "rank_map_from_candidate":
         source_id = _required_candidate_text(candidate, "rank_map_from_candidate")

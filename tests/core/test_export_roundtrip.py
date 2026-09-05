@@ -35,3 +35,22 @@ def test_export_pack_save_load_roundtrip_accuracy_and_size():
         overhead = 16 * (m + r + 1 + r) + 8192  # mins/scales + header slack
         assert size <= q_bytes + overhead
 
+
+
+@pytest.mark.parametrize("field,value", [("bits", 16), ("version", "future"), ("rank", 99), ("shape", [999, 999])])
+def test_load_rejects_inconsistent_quantization_metadata(tmp_path, field, value):
+    import json
+
+    import numpy as np
+    from safetensors.numpy import save_file
+
+    from mlx_plastic_rank.export_safetensors import load_lowrank, pack_lowrank
+
+    packed = pack_lowrank(mx.eye(2), mx.ones(2), mx.eye(2))
+    metadata = json.loads(packed["__meta__.json"].tobytes())
+    metadata[field] = value
+    packed["__meta__.json"] = np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8)
+    target = tmp_path / "invalid.safetensors"
+    save_file(packed, str(target))
+    with pytest.raises(ValueError):
+        load_lowrank(str(target))

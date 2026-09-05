@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the frozen first-opportunity loss-lookahead calibration benchmark."""
+"""Run the frozen two-transfer multi-batch controller benchmark."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Sequence
 
-from mlx_plastic_rank.packs.loss_lookahead_calibration import (
-    LookaheadCalibrationConfig,
-    run_loss_lookahead_calibration,
+from research.multibatch_controller import (
+    MultiBatchControllerConfig,
+    run_multibatch_controller,
     write_artifacts,
 )
 
@@ -39,9 +39,8 @@ def _git(*args: str) -> str:
     return result.stdout.strip()
 
 
-def _source_hash() -> str:
-    source = Path("src/mlx_plastic_rank/packs/loss_lookahead_calibration.py")
-    return hashlib.sha256(source.read_bytes()).hexdigest()
+def _hash(path: str) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,12 +60,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     started = datetime.now(timezone.utc)
     monotonic_start = time.monotonic()
-    report = run_loss_lookahead_calibration(
-        LookaheadCalibrationConfig(mode=args.mode, seeds=args.seeds)
+    report = run_multibatch_controller(
+        MultiBatchControllerConfig(mode=args.mode, seeds=args.seeds)
     )
     completed = datetime.now(timezone.utc)
     output_dir = args.output_dir or (
-        Path("out/capacity_migration/loss_lookahead_calibration_v1") / args.mode
+        Path("out/capacity_migration/multibatch_controller_v2") / args.mode
     )
     provenance = {
         "command": [sys.executable, *sys.argv],
@@ -75,7 +74,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "runtime_seconds": time.monotonic() - monotonic_start,
         "git_revision": _git("rev-parse", "HEAD"),
         "git_status_porcelain": _git("status", "--porcelain"),
-        "source_sha256": _source_hash(),
+        "source_sha256": _hash(
+            "research/multibatch_controller.py"
+        ),
+        "calibration_dependency_sha256": _hash(
+            "research/loss_lookahead_calibration.py"
+        ),
+        "learned_dependency_sha256": _hash(
+            "research/learned_capacity_migration.py"
+        ),
         "python": sys.version,
         "mlx": version("mlx"),
         "platform": platform.platform(),

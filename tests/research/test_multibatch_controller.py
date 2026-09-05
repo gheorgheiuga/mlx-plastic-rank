@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from mlx_plastic_rank.packs.multibatch_controller import (
+from research.multibatch_controller import (
     CONDITIONS,
     EVIDENCE_SEEDS,
     MultiBatchControllerConfig,

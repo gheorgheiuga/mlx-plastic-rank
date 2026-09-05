@@ -161,3 +161,22 @@ def test_dropout_bounds_validation():
         wrapper.set_dropout(-0.1)
     with pytest.raises(ValueError):
         wrapper.set_dropout(1.0)
+
+
+def test_gated_projection_preserves_outputs_and_inactive_gradients():
+    from mlx_plastic_rank.packs.lora import SliceLoRA
+
+    mx.random.seed(81)
+    adapter = SliceLoRA("test", 0, 8, 4, 8, mx.random.normal((8, 4)), mx.random.normal((4, 8)), 8, 8)
+    adapter.gates = mx.array([0.0, 1.0, 0.0, 0.25])
+    inputs = mx.random.normal((2, 3, 8))
+    dense = ((inputs @ adapter.B.T) * adapter.gates) @ adapter.A.T * adapter.scale
+    assert mx.allclose(adapter.delta(inputs), dense, atol=1e-5).item()
+
+    def loss(arrays):
+        adapter.A, adapter.B = arrays
+        return mx.sum(adapter.delta(inputs) ** 2)
+
+    _, gradients = mx.value_and_grad(loss)([adapter.A, adapter.B])
+    assert mx.array_equal(gradients[0][:, [0, 2]], mx.zeros((8, 2))).item()
+    assert mx.array_equal(gradients[1][[0, 2], :], mx.zeros((2, 8))).item()

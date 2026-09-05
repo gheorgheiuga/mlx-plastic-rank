@@ -2,9 +2,16 @@
 
 ## Current scope — 2026-09-05
 
+The implementation follow-through moves parked code to the repository-only
+`research/` package, requires fixed allocation for normal pack creation, and
+repairs checkpoint, numerical and serialization boundaries. ADR-0017 states the
+precise mathematical contract. ADR-0016's dense references passed all frozen
+gates, with all broken-pairing controls failing as expected. Its next question is
+factorized capacity, optimization and allocation, under a separate declaration.
+
 ADR-0015 supersedes older default-demo and expansion priorities: maintain the
 low-rank/pack substrate, park unvalidated controllers and larger pilots, and
-prepare only the ADR-0016 baseline diagnostic. Earlier entries below are a
+complete the ADR-0016 baseline diagnostic. Earlier entries below are a
 decision history, not a queue of currently endorsed experiments. Historical
 quality claims retain the initialization/provenance qualifications in ADR-0012.
 
@@ -147,12 +154,24 @@ quality claims retain the initialization/provenance qualifications in ADR-0012.
 - **Context:** Duplicate demos, unnecessary default dependencies and unvalidated research tracks obscured the useful low-rank/pack substrate. The default demo's arbitrary mean objective and rapid heuristic rank growth did not demonstrate conserved capacity.
 - **Decision:** Keep tested factor/pack lifecycles, compact SVD, accounting and content-bound evidence. Replace the demo with a bounded prune/restore cycle; retire the banner and duplicate plasticity, generation and routing entry points. Remove unused SymPy, move dataset extraction to an optional extra, and retain explicit legacy imports without advertising parked APIs as the core.
 - **Consequences:** Current documentation uses one demo and one pack CLI. Failed controllers, theorem selectors, large-model expansion and the external vault leave the active work plan while their tests/source/evidence remain. Historical priorities are superseded only in scope; failed thresholds and raw artifacts are preserved. The only proposed research next step is ADR-0016.
-- **Test organization:** The default suite now follows core/pack/utility scope (259 cases); 71 parked regressions run explicitly. Two weak smoke checks are folded into stronger tests, and repetitive parser setup is consolidated. Research tests remain required when shared-mechanic changes affect them.
+- **Initial test organization:** The first split gave 259 core/pack/utility cases and 71 explicit research regressions. Two weak smoke checks were folded into stronger tests, and repetitive parser setup consolidated. Research tests remain required when shared-mechanic changes affect them.
+- **Implementation follow-through:** The initial counts above describe the first cleanup. Parked source and policy tests now live in repository-only `research/` and `tests/research/`; the wheel excludes them. Normal pack training requires fixed allocation and defaults to `component-v1`. Unified validation/training repairs checkpoint identity, reciprocal-factor overlap, non-finite/overflow inputs and quantization contracts. Factored forward operations reduce measured temporary allocations; see DSN-20260905-04 for evidence and limits. Explicit manager/vault root imports and dynamic/spectral CLI flags are retired; exact old workflows remain in Git/source snapshots.
+- **Final validation:** All 365 tests pass: 268 default cases and 97 explicit research cases. Static checks, ten-step demo, built-wheel import/forward, artifact receipts and documentation links pass. The additional numerical/boundary cases protect reproduced failures and the declared baseline diagnostic; they do not expand the production feature surface.
 
 ## ADR-0016 — Diagnose the baseline before another adaptive comparison
 - **Date:** 2026-09-05
-- **Status:** Proposed; not implemented or run
+- **Status:** Experimental; bounded diagnostic completed, all declared gates passed
 - **DSN:** `codex/dsn/dsn-20260905-baseline-validity-diagnostic.md`
 - **Context:** Finite development runs still missed A-readiness and joint-capacity gates. Current evidence does not distinguish data coverage, conditioning, representation and optimization explanations.
-- **Proposed decision:** Fit a dense routed reference on stored development training arrays only, measure the same fitted checkpoint on held-out rows, and include a shifted-target negative control. Freeze solver/measurement criteria before execution; use exact input identities, all five development seeds and a five-minute bound.
+- **Decision:** Fit a dense routed reference on stored development training arrays only, measure the same fitted checkpoint on held-out rows, and include a shifted-target negative control. Freeze solver/measurement criteria before execution; use exact input identities, all five development seeds and a five-minute bound.
+- **Evidence:** All ten dense references exceeded 0.9999999999999 held-out score; all ten negative controls scored below 0.50. Verified both receipts and independently remeasured all saved coefficients. [Results](research/baseline-diagnostic-results.md) and [identities](evidence/baseline_diagnostic_seed31_35.json) preserve the frozen pre-run declaration and original failures.
+- **Next question:** Diagnose factorized capacity, optimization and allocation at matched checkpoints under a separately declared protocol. The dense result does not establish rank-six feasibility or identify SGD alone as the cause.
 - **Consequences:** The result selects one follow-up diagnosis or fixture repair. It is not a fair rank-budget competitor and cannot admit a controller. Reserved evidence seeds, threshold changes, controller sweeps, return-A and larger-model work remain gated.
+
+## ADR-0017 — Specify Pop's common-operator subspace contract
+
+- **Status:** Experimental; implementation checks, no learned quality result
+- **Decision:** Use DSN-20260905-06 to distinguish exact polynomial rank accounting from numerical rank, gate counts and task selection. Keep parked controllers outside the installed package and require explicit fixed rank plus matched component initialization for the normal workflow.
+- **Evidence:** Exact small references and numerical perturbation/equivalent-factorization regressions; no controller promotion follows.
+- **Next validation:** ADR-0016 passed; establish valid factorized controls before a learning study. A future shared-operator learning proposal must beat same-basis controls under a separately frozen budget and evaluation protocol.
+- **DSN:** [Pop mathematical contract](dsn/dsn-20260905-pop-mathematical-contract.md)

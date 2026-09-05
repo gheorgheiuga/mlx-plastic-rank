@@ -1,6 +1,6 @@
 """Bounded low-rank lifecycle demo; no training or controller-quality claim.
 
-The historical class imports remain available for compatibility. Use the
+Core class imports remain available for compatibility. Use the
 installed ``mlx_plastic_rank`` package for application code.
 """
 
@@ -10,7 +10,6 @@ import json
 import mlx.core as mx
 
 from mlx_plastic_rank.lowrank import PlasticBlock, RankLayer  # noqa: F401
-from mlx_plastic_rank.plasticity_manager import PlasticityManager  # noqa: F401
 from mlx_plastic_rank.rank_select import stable_rank  # noqa: F401
 from mlx_plastic_rank.utils import set_seed
 

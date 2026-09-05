@@ -93,19 +93,17 @@ def _base_payload(tmp_path: Path) -> dict:
                 "quality_reference": True,
             },
             {
-                "id": "dynamic_source",
-                "pack": "demo-dynamic",
-                "mode": "dynamic_rank",
+                "id": "fixed_source",
+                "pack": "demo-source",
+                "mode": "fixed_rank",
                 "rank": 32,
                 "steps": 5,
-                "dynamic_initial_rank": 8,
-                "dynamic_min_rank": 4,
             },
             {
                 "id": "hetero_map",
                 "pack": "demo-hetero",
                 "mode": "rank_map_from_candidate",
-                "rank_map_from_candidate": "dynamic_source",
+                "rank_map_from_candidate": "fixed_source",
                 "tradeoff_candidate": True,
             },
         ],
@@ -253,10 +251,10 @@ def test_bakeoff_plan_emits_deterministic_create_eval_ledger_proof_phases(tmp_pa
     first_create = phases[0].command
     assert first_create[first_create.index("--rank") + 1] == "16"
     assert "--chat-template" in first_create
-    dynamic_create = next(phase for phase in phases if phase.candidate_id == "dynamic_source" and phase.phase == "create")
-    assert "--dynamic-rank" in dynamic_create.command
+    dynamic_create = next(phase for phase in phases if phase.candidate_id == "fixed_source" and phase.phase == "create")
+    assert "--dynamic-rank" not in dynamic_create.command
     hetero_create = next(phase for phase in phases if phase.candidate_id == "hetero_map" and phase.phase == "create")
-    assert hetero_create.command[hetero_create.command.index("--rank-map-from-pack") + 1] == "demo-dynamic"
+    assert hetero_create.command[hetero_create.command.index("--rank-map-from-pack") + 1] == "demo-source"
 
 
 def test_bakeoff_plan_generates_resumable_control_maps_before_training(tmp_path: Path):
@@ -312,7 +310,7 @@ def test_bakeoff_summary_computes_winners_and_promotion_gate(tmp_path: Path):
     pack_metrics = {
         "fixed_r16": ("demo-r16", 7.0, 0.62, 10.0, 1600),
         "fixed_r32": ("demo-r32", 5.0, 0.70, 25.0, 3200),
-        "dynamic_source": ("demo-dynamic", 6.2, 0.66, 14.0, 2100),
+        "fixed_source": ("demo-source", 6.2, 0.66, 14.0, 2100),
         "hetero_map": ("demo-hetero", 5.4, 0.68, 12.0, 1900),
     }
     for phase in build_bakeoff_plan(spec):
@@ -382,7 +380,7 @@ def test_bakeoff_summary_records_control_provenance(tmp_path: Path):
     pack_metrics = {
         "fixed_r16": ("demo-r16", 7.0),
         "fixed_r32": ("demo-r32", 5.0),
-        "dynamic_source": ("demo-dynamic", 6.2),
+        "fixed_source": ("demo-source", 6.2),
         "hetero_map": ("demo-hetero", 5.4),
         "random_control": ("demo-random-control", 5.1),
         "shuffled_control": ("demo-shuffled-control", 7.2),

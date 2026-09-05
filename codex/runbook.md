@@ -79,16 +79,31 @@ the data extra. Generated examples preserve source/license metadata; see
 
 ## Research handoff
 
-Start with the [proposed baseline diagnostic](dsn/dsn-20260905-baseline-validity-diagnostic.md),
-not another controller sweep. Its output should decide whether the next change
-belongs in data coverage, numerical conditioning or factorized optimization.
-Keep this diagnosis distinct from an equal-budget controller comparison.
+The [baseline diagnostic](dsn/dsn-20260905-baseline-validity-diagnostic.md) is
+complete: all ten dense references passed the frozen 0.95 training/held-out gates,
+and all ten shifted-target controls scored below 0.50 on held-out data. See
+[results and identities](research/baseline-diagnostic-results.md).
+
+To rerun from the retained inputs, choose a fresh output directory:
+
+```sh
+uv run --locked python -m research.baseline_diagnostic \
+  --output-dir out/baseline_diagnostic/new-run
+```
+
+The runner verifies the original receipt, freezes source/protocol before fitting,
+and refuses missing or changed inputs. The next proposed diagnosis must separate
+factorized capacity, optimization and allocation using the same fitted checkpoint
+for training and held-out measurement. Declare it separately; this result does
+not admit an equal-budget controller comparison.
 
 Historical development replay is documented with its artifacts in
 [gradient-agreement results](research/gradient-agreement/development-results.md).
 Its validity failure is expected; do not lower thresholds to make it pass.
 Snapshots preserve the old source and lockfile. Replaying today's source is a
 new run, not a byte-identical reproduction of a historical environment.
+Current experimental entry points live in [repository-only research](../research/README.md)
+and run as `python -m research.<module>`.
 
 The [parking lot](parking-lot.md) names return triggers. Do not resume a parked
 track or consume reserved seeds merely because its script remains runnable.

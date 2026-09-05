@@ -31,9 +31,13 @@ def get_logger(name: str = "mlx_plastic_rank"):
 def quantise(x: mx.array, bits: int = 8):
     """Uniformly quantize an array to unsigned integers.
 
-    Returns a tuple (q, min, scale) where q is uint8 by default, and
+    Returns a tuple (q, min, scale) where q is uint8, and
     dequantization is: q.astype(float32) * scale + min.
     """
+    if bits != 8 or isinstance(bits, bool):
+        raise ValueError("Only 8-bit quantization is supported")
+    if x.size == 0 or not bool(mx.all(mx.isfinite(x)).item()):
+        raise ValueError("Quantization requires nonempty finite values")
     x_min, x_max = x.min(), x.max()
     denom = (2 ** bits - 1)
     scale = (x_max - x_min) / denom
@@ -45,4 +49,3 @@ def quantise(x: mx.array, bits: int = 8):
 def dequantise(q: mx.array, mn: float, scale: float) -> mx.array:
     """Inverse of quantise."""
     return q.astype(mx.float32) * scale + mn
-

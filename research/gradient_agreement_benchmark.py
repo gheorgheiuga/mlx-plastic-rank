@@ -19,7 +19,7 @@ from typing import Any
 import mlx.core as mx
 import numpy as np
 
-from mlx_plastic_rank.packs.gradient_admission import (
+from research.gradient_admission import (
     SPEC_PATH,
     load_spec,
     resolved_seeds,
@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def source_files() -> list[Path]:
     files = set(ROOT.glob("*.py"))
-    for folder in ("src", "scripts"):
+    for folder in ("src", "scripts", "research"):
         files.update((ROOT / folder).rglob("*.py"))
     files.update((ROOT / "codex/research/gradient-agreement").glob("*"))
     files.update(ROOT / name for name in ("pyproject.toml", "uv.lock", ".python-version"))
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         "git_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "git_status": subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True),
         "source_sha256": hashes, "protocol_sha256": digest(SPEC_PATH.read_bytes()),
-        "generator": "scripts/gradient_agreement_benchmark.py",
+        "generator": "research/gradient_agreement_benchmark.py",
         "data_origin": "repository-authored synthetic fixture; no third-party data or weights",
         "run_status": "running", "evidence_enabled": False,
     }

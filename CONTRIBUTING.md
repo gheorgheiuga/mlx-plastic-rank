@@ -35,9 +35,12 @@ parallel entry points or generic frameworks for one-off experiments.
 Design/research changes need a DSN in `codex/dsn/`, a DSN-log update and a matching
 entry in `codex/decisions.md`, or an explicit Proposed/Experimental status.
 Separate an accepted engineering decision from evidence for scientific benefit.
-Name the test that would falsify or promote a hypothesis. The current next step
-is [baseline diagnosis](codex/dsn/dsn-20260905-baseline-validity-diagnostic.md);
-parked controllers are not an automatic implementation backlog.
+Name the test that would falsify or promote a hypothesis. The
+[dense baseline diagnosis passed](codex/research/baseline-diagnostic-results.md);
+the next question is factorized capacity, optimization and allocation. Declare
+that diagnostic before running it. Parked controllers are not an automatic
+implementation backlog. Keep their code in repository-only `research/`, with
+module entry points as described in [its README](research/README.md).
 
 Preserve failed runs and content identities. Never overwrite historical outputs
 or reinterpret shared-seed results as matched initialization. Keep generated

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,19 +26,24 @@ class TrainingConfig:
     sequence_length: int = 128
     log_interval: int = 100
     lora_dropout: float = 0.0
-    dynamic_rank: bool = False
-    dynamic_rank_interval: int = 50
-    dynamic_rank_warmup: int = 50
-    dynamic_rank_min: int = 2
-    dynamic_rank_grow_threshold: float = 0.25
-    dynamic_rank_prune_threshold: float = 0.03
-    dynamic_rank_allowed_ranks: tuple[int, ...] = ()
     batch_seed: int = 42
     training_seed: int = 42
     batch_schedule: MinibatchSchedule | None = None
     batch_schedule_path: Path | str | None = None
     dataset_fingerprint: str | None = None
     resolved_batch_schedule_digest: str | None = field(init=False, default=None)
+
+    def __post_init__(self) -> None:
+        for name in ("steps", "batch_size", "sequence_length", "log_interval"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.sequence_length < 2:
+            raise ValueError("sequence_length must be at least two")
+        if not math.isfinite(self.learning_rate) or self.learning_rate <= 0:
+            raise ValueError("learning_rate must be finite and positive")
+        if not math.isfinite(self.lora_dropout) or not 0 <= self.lora_dropout < 1:
+            raise ValueError("lora_dropout must be finite and in [0, 1)")
 
     def resolve_batch_schedule(self, *, dataset_size: int) -> MinibatchSchedule:
         """Return one schedule isolated from adapter and dropout RNG state."""
@@ -94,113 +100,77 @@ def model_logits(model, inputs: mx.array) -> mx.array:
 
 
 def train_lora(
-    manager: LoRAManager,
-    model,
-    dataset: mx.array,
-    config: TrainingConfig,
+    manager: LoRAManager, model, dataset: mx.array, config: TrainingConfig,
 ) -> float:
-    model.eval()
-    params = manager.trainable_parameters()
-    if not params:
-        raise ValueError("No LoRA parameters initialised for training")
-
-    manager.set_dropout(config.lora_dropout)
-    schedule = config.resolve_batch_schedule(dataset_size=int(dataset.shape[0]))
-    current_batch: mx.array
-
-    def loss_fn(param_arrays: list[mx.array]) -> mx.array:
-        manager.set_trainable_parameters(param_arrays)
-        inputs = current_batch[:, :-1]
-        targets = current_batch[:, 1:]
-        logits = model_logits(model, inputs)
-        loss = nn.losses.cross_entropy(logits, targets).mean()
-        return loss
-
-    param_arrays = params
-    start = time.time()
-    mx.random.seed(config.training_seed)
-    for step in range(1, config.steps + 1):
-        batch_indices = mx.array(schedule.batch(step - 1), dtype=mx.int32)
-        current_batch = dataset[batch_indices]
-        loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
-        param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
-        manager.set_trainable_parameters(param_arrays)
-        mx.eval(loss, *param_arrays)
-        _maybe_adjust_dynamic_ranks(manager, config, step)
-        if step % config.log_interval == 0 or step == config.steps:
-            elapsed = time.time() - start
-            print(f"step {step}/{config.steps} loss={float(loss):.4f} elapsed={elapsed:.1f}s")
-    manager.set_dropout(0.0)
-    return float(loss)
+    """Train on every target token; return the last pre-update batch loss."""
+    return _train(manager, model, dataset, None, config)
 
 
 def train_lora_supervised(
-    manager: LoRAManager,
-    model,
-    tokens: mx.array,
-    masks: mx.array,
+    manager: LoRAManager, model, tokens: mx.array, masks: mx.array, config: TrainingConfig,
+) -> float:
+    """Train on masked target tokens; return the last pre-update batch loss."""
+    return _train(manager, model, tokens, masks, config)
+
+
+def _require_finite(values: list[mx.array], label: str) -> None:
+    if not all(bool(mx.all(mx.isfinite(value)).item()) for value in values):
+        raise ValueError(f"Non-finite {label}; training step was not committed")
+
+
+def _train(
+    manager: LoRAManager, model, tokens: mx.array, masks: mx.array | None,
     config: TrainingConfig,
 ) -> float:
-    model.eval()
-    params = manager.trainable_parameters()
-    if not params:
+    config.__post_init__()  # Also validate configurations edited after construction.
+    if tokens.ndim != 2 or tokens.shape[0] == 0 or tokens.shape[1] < 2:
+        raise ValueError("Training tokens must be a nonempty matrix with at least two columns")
+    if masks is not None:
+        if masks.shape != tokens.shape:
+            raise ValueError("Training masks must match the tokens")
+        _require_finite([masks], "training masks")
+        if bool(mx.any((masks < 0) | (masks > 1)).item()) or bool(mx.any(mx.sum(masks[:, 1:], axis=1) <= 0).item()):
+            raise ValueError("Every training row needs positive target weight and masks in [0, 1]")
+    param_arrays = manager.trainable_parameters()
+    if not param_arrays:
         raise ValueError("No LoRA parameters initialised for training")
-
-    manager.set_dropout(config.lora_dropout)
+    _require_finite([p.astype(mx.float16) for p in param_arrays], "initial parameters")
     schedule = config.resolve_batch_schedule(dataset_size=int(tokens.shape[0]))
+    model.eval()
     current_tokens: mx.array
-    current_masks: mx.array
+    current_masks: mx.array | None
 
-    def loss_fn(param_arrays: list[mx.array]) -> mx.array:
-        manager.set_trainable_parameters(param_arrays)
-        inputs = current_tokens[:, :-1]
-        targets = current_tokens[:, 1:]
+    def loss_fn(values: list[mx.array]) -> mx.array:
+        manager.set_trainable_parameters(values)
+        logits = model_logits(model, current_tokens[:, :-1])
+        losses = nn.losses.cross_entropy(logits, current_tokens[:, 1:], reduction="none")
+        if current_masks is None:
+            return losses.mean()
         target_mask = current_masks[:, 1:]
-        logits = model_logits(model, inputs)
-        token_losses = nn.losses.cross_entropy(logits, targets, reduction="none")
-        denom = mx.sum(target_mask) + 1e-8
-        return mx.sum(token_losses * target_mask) / denom
+        return mx.sum(losses * target_mask) / mx.sum(target_mask)
 
-    param_arrays = params
     start = time.time()
     mx.random.seed(config.training_seed)
-    for step in range(1, config.steps + 1):
-        batch_indices = mx.array(schedule.batch(step - 1), dtype=mx.int32)
-        current_tokens = tokens[batch_indices]
-        current_masks = masks[batch_indices]
-        loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
-        param_arrays = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
+    try:
+        manager.set_dropout(config.lora_dropout)
+        for step in range(1, config.steps + 1):
+            indices = mx.array(schedule.batch(step - 1), dtype=mx.int32)
+            current_tokens = tokens[indices]
+            current_masks = masks[indices] if masks is not None else None
+            loss, grads = mx.value_and_grad(loss_fn)(param_arrays)
+            _require_finite([loss, *grads], "loss or gradients")
+            next_params = [p - config.learning_rate * g for p, g in zip(param_arrays, grads)]
+            # The live adapters store fp16. A finite fp32 master can still
+            # overflow on conversion, so validate the actual storage format.
+            _require_finite([p.astype(mx.float16) for p in next_params], "updated parameters")
+            manager.set_trainable_parameters(next_params)
+            param_arrays = next_params
+            if step % config.log_interval == 0 or step == config.steps:
+                elapsed = time.time() - start
+                print(f"step {step}/{config.steps} pre_update_loss={float(loss):.4f} elapsed={elapsed:.1f}s")
+    except Exception:
         manager.set_trainable_parameters(param_arrays)
-        mx.eval(loss, *param_arrays)
-        _maybe_adjust_dynamic_ranks(manager, config, step)
-        if step % config.log_interval == 0 or step == config.steps:
-            elapsed = time.time() - start
-            print(f"step {step}/{config.steps} supervised_loss={float(loss):.4f} elapsed={elapsed:.1f}s")
-    manager.set_dropout(0.0)
+        raise
+    finally:
+        manager.set_dropout(0.0)
     return float(loss)
-
-
-def _maybe_adjust_dynamic_ranks(
-    manager: LoRAManager,
-    config: TrainingConfig,
-    step: int,
-) -> None:
-    if not config.dynamic_rank:
-        return
-    if step < config.dynamic_rank_warmup:
-        return
-    if config.dynamic_rank_interval <= 0 or step % config.dynamic_rank_interval != 0:
-        return
-    events = manager.adjust_dynamic_ranks(
-        allowed_ranks=config.dynamic_rank_allowed_ranks,
-        min_rank=config.dynamic_rank_min,
-        grow_threshold=config.dynamic_rank_grow_threshold,
-        prune_threshold=config.dynamic_rank_prune_threshold,
-    )
-    for event in events:
-        print(
-            "dynamic-rank "
-            f"step={step} adapter={event['adapter']} action={event['action']} "
-            f"rank={event['from_rank']}->{event['to_rank']} "
-            f"signal={event['signal']:.4g} global={event['global_signal']:.4g}"
-        )

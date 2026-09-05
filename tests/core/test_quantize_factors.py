@@ -32,3 +32,15 @@ def test_quantize_factors_constant_rows():
     )
     assert float(err) < 1e-2
 
+
+
+@pytest.mark.parametrize("bits", [0, 4, 16])
+def test_unsupported_quantization_bits_are_rejected(bits):
+    from mlx_plastic_rank import lowrank
+    from mlx_plastic_rank.utils import quantise
+
+    U, S, Vh = mx.eye(2), mx.ones(2), mx.eye(2)
+    with pytest.raises(ValueError, match="8-bit"):
+        lowrank.quantize_factors(U, S, Vh, bits=bits)
+    with pytest.raises(ValueError, match="8-bit"):
+        quantise(S, bits=bits)

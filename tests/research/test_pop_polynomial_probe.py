@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from mlx_plastic_rank.packs.io import PackMetadata, save_pack, save_pack_metadata
-from mlx_plastic_rank.pop_polynomial_probe import (
+from research.pop_polynomial_probe import (
     build_operator,
     project_operator,
     project_weight_operator,

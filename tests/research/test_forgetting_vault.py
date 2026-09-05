@@ -7,11 +7,7 @@ from typing import Any, cast
 
 import pytest
 
-from mlx_plastic_rank import ForgetPolicy as ExportedForgetPolicy
-from mlx_plastic_rank import ForgettingVault as ExportedForgettingVault
-from mlx_plastic_rank import MemoryRecord as ExportedMemoryRecord
-from mlx_plastic_rank import verify_certificate_chain as ExportedVerifyChain
-from mlx_plastic_rank.forgetting_vault import (
+from research.forgetting_vault import (
     DeletionCertificate,
     ForgetPolicy,
     ForgettingVault,
@@ -186,11 +182,6 @@ def test_certificate_verification_detects_tampering_and_wrong_key():
     assert "tombstone_partition_invalid" in contradictory_verification.failures
 
 
-def test_forgetting_api_is_available_from_the_package_root():
-    assert ExportedForgetPolicy is ForgetPolicy
-    assert ExportedForgettingVault is ForgettingVault
-    assert ExportedMemoryRecord is MemoryRecord
-    assert ExportedVerifyChain is verify_certificate_chain
 
 
 def test_vault_rejects_invalid_records_policies_and_duplicate_requests():

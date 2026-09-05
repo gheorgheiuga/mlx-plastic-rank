@@ -56,13 +56,11 @@ class RankLayer(nn.Module):
         return self.S.shape[0]
 
     def __call__(self, x: mx.array) -> mx.array:
-        W = self.W0
+        output = x @ self.W0.T
         if self.rank > 0:
-            # Compose low-rank update as sum_i s_i u_i v_i
-            # Shapes: U (r, out), V (r, inn) -> U.T @ (V * S[:, None]) => (out, inn)
-            W = W + self.U.T @ (self.V * self.S[:, None])
+            output = output + ((x @ self.V.T) * self.S) @ self.U
         b = self.bias if self.bias is not None else 0
-        return x @ W.T + b
+        return output + b
 
     # ---------- plastic ops ----------
     def add_rank(self, k: int):
@@ -187,9 +185,14 @@ def quantize_factors(U: mx.array, S: mx.array, Vh: mx.array, bits: int = 8) -> D
 
     S is quantized with a single (min, scale) over the vector.
     """
-    # Ensure 2D factors
+    if bits != 8 or isinstance(bits, bool):
+        raise ValueError("Only 8-bit factor quantization is supported")
     if U.ndim != 2 or Vh.ndim != 2 or S.ndim != 1:
         raise ValueError("Shapes must be U:(m,r), S:(r,), Vh:(r,n)")
+    if U.shape[1] != S.shape[0] or Vh.shape[0] != S.shape[0] or min(*U.shape, *Vh.shape) <= 0:
+        raise ValueError("Factors must be nonempty with matching ranks")
+    if not all(bool(mx.all(mx.isfinite(value)).item()) for value in (U, S, Vh)):
+        raise ValueError("Factors must contain finite values")
 
     qU, minU, scU = _quantise_rows(U, bits)
     qVh, minVh, scVh = _quantise_rows(Vh, bits)

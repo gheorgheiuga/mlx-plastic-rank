@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, cast
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -108,11 +108,22 @@ class SliceLoRA:
 
     def delta(self, x: mx.array) -> mx.array:
         x_fp32 = x.astype(mx.float32)
-        B_fp32 = self.B.astype(mx.float32)
-        A_fp32 = self.A.astype(mx.float32)
+        if self.gates is None:
+            B_fp32 = self.B.astype(mx.float32)
+            A_fp32 = self.A.astype(mx.float32)
+        else:
+            # Select before multiplication. Dormant arrays remain stored for
+            # restoration; they no longer consume projection matrix products.
+            # Include every nonzero gate to preserve fractional-gate semantics.
+            active = [i for i, gate in enumerate(cast(list[float], self.gates.tolist())) if gate != 0]
+            if not active:
+                return mx.zeros((*x.shape[:-1], self.output_dim), dtype=x.dtype)
+            indices = mx.array(active, dtype=mx.int32)
+            B_fp32 = mx.take(self.B, indices, axis=0).astype(mx.float32)
+            A_fp32 = mx.take(self.A, indices, axis=1).astype(mx.float32)
         projected = mx.matmul(x_fp32, B_fp32.T)
         if self.gates is not None:
-            projected = projected * self.gates.astype(projected.dtype)
+            projected = projected * mx.take(self.gates, indices).astype(projected.dtype)
         delta = mx.matmul(projected, A_fp32.T)
         scaled = self.scale * delta
         return scaled.astype(x.dtype)

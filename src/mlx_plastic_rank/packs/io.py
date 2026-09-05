@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +10,8 @@ from typing import Dict, List
 # safetensors.numpy requires NumPy arrays at the pack file boundary.
 import numpy as np
 from safetensors.numpy import load_file, save_file
+
+from .provenance import content_sha256
 
 PACK_VERSION = "0.1.0"
 
@@ -29,9 +30,13 @@ class PackMetadata:
     created_at: str = ""
     notes: str = ""
     version: str = PACK_VERSION
+    base_hash_version: int = 1
 
     @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "PackMetadata":
+        base_hash_version = data.get("base_hash_version", 0)
+        if type(base_hash_version) is not int or base_hash_version not in (0, 1):
+            raise ValueError("Unsupported base hash version")
         base_model_val = data.get("base_model")
         base_model = str(base_model_val) if base_model_val not in (None, "") else None
         rank_data = data.get("rank_map") or {}
@@ -66,6 +71,7 @@ class PackMetadata:
             created_at=str(data.get("created_at", "")),
             notes=str(data.get("notes", "")),
             version=str(data.get("version", PACK_VERSION)),
+            base_hash_version=base_hash_version,
         )
 
     def to_dict(self) -> Dict[str, object]:
@@ -82,38 +88,61 @@ class PackMetadata:
             "created_at": self.created_at,
             "notes": self.notes,
             "version": self.version,
+            "base_hash_version": self.base_hash_version,
         }
 
 
 def compute_sha256(path: Path) -> str:
-    target = path
-    if path.is_dir():
-        safetensors = sorted(path.glob("*.safetensors"))
-        if not safetensors:
-            raise FileNotFoundError(f"No .safetensors file found under {path}")
-        target = safetensors[0]
-    if not target.exists():
-        raise FileNotFoundError(f"Cannot compute sha256 for missing file: {target}")
+    """Hash complete content, including every checkpoint shard and configuration."""
+    return content_sha256(path)
 
-    hasher = hashlib.sha256()
-    with target.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
+
+def validate_base_identity(
+    metadata: PackMetadata, *, checkpoint_hash: str | None, base_model: str | None,
+) -> None:
+    """Check the full checkpoint identity; legacy hashes are never sufficient."""
+    if metadata.base_hash_version not in (0, 1):
+        raise ValueError(f"Unsupported base hash version: {metadata.base_hash_version}")
+    expected_hash = metadata.base_hash
+    if metadata.base_hash_version == 0:
+        provenance = metadata.training_config.get("provenance", {})
+        expected_hash = provenance.get("model_sha256", "") if isinstance(provenance, dict) else ""
+        if not expected_hash:
+            raise ValueError("Legacy pack has no whole-checkpoint identity; inspect or recreate it before attachment")
+    if expected_hash:
+        if not checkpoint_hash:
+            raise ValueError("Pack requires a resolved checkpoint for base hash verification")
+        if expected_hash != checkpoint_hash:
+            raise ValueError("Base hash mismatch: pack and checkpoint content differ")
+    elif checkpoint_hash:
+        raise ValueError("Pack has no checkpoint identity; recreate it against this checkpoint")
+    elif base_model and metadata.base_model and base_model != metadata.base_model:
+        raise ValueError(f"Base model mismatch: expected {base_model}, pack built for {metadata.base_model}")
+
+
+def validate_pack_tensors(tensors: Dict[str, np.ndarray]) -> None:
+    """Reject non-real or non-finite values at every pack file boundary."""
+    for key, value in tensors.items():
+        if not np.issubdtype(value.dtype, np.floating) or not np.isfinite(value).all():
+            raise ValueError(f"Pack tensor {key} must contain finite floating-point values")
 
 
 def save_pack(tensors: Dict[str, np.ndarray], out_path: Path) -> None:
+    validate_pack_tensors(tensors)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     save_file(tensors, str(out_path))
 
 
 def load_pack(tensor_path: Path) -> Dict[str, np.ndarray]:
-    return load_file(str(tensor_path))
+    tensors = load_file(str(tensor_path))
+    validate_pack_tensors(tensors)
+    return tensors
 
 
 def save_pack_metadata(metadata: PackMetadata, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(metadata.to_dict(), indent=2), encoding="utf-8")
+    payload = json.dumps(metadata.to_dict(), indent=2, allow_nan=False)
+    path.write_text(payload, encoding="utf-8")
 
 
 def load_pack_metadata(path: Path) -> PackMetadata:

@@ -10,13 +10,13 @@ is claimed.
 
 ## Implementation
 
-- [Controller and audited state](../../../src/mlx_plastic_rank/packs/gradient_agreement.py):
+- [Controller and audited state](../../../research/gradient_agreement.py):
   analytic removal cost, recipient agreement, gradient-energy ablation, uniform
   clipped SGD, exact branch restoration and both-factor inactive-state checks.
-- [Development orchestration](../../../src/mlx_plastic_rank/packs/gradient_admission.py):
+- [Development orchestration](../../../research/gradient_admission.py):
   nine conditions, common A checkpoints for selector comparisons, separate A
   training for future-aware controls, fixed partitions and complete-matrix checks.
-- [Entry point](../../../scripts/gradient_agreement_benchmark.py): source-byte
+- [Entry point](../../../research/gradient_agreement_benchmark.py): source-byte
   snapshots, generated-array archives, journals, output receipts, time caps and
   refusal to reuse an output directory. Evidence mode is disabled.
 
@@ -89,7 +89,7 @@ into a **new**, absent output directory on Apple Silicon with Metal access:
 
 ```sh
 uv sync --locked
-uv run --locked python scripts/gradient_agreement_benchmark.py \
+uv run --locked python -m research.gradient_agreement_benchmark \
   --mode development \
   --output-dir out/capacity_migration/gradient_agreement_v1/development_reproduction \
   --require-valid
@@ -115,3 +115,9 @@ held-out arrays fixed before another adaptive-controller matrix.
 An evidence runner, successful validity receipt and freeze, untouched-seed audit,
 and the eight declared paired comparisons remain prerequisites for admission.
 No confirmatory mode or promotion has been enabled.
+
+**Subsequent diagnostic:** the separately declared dense reference now
+[passes on the stored arrays](../baseline-diagnostic-results.md), including all
+broken-pairing controls. Factorized readiness remains unresolved. Current source
+links and module commands reflect the repository-only research move; the retained
+packages preserve the original source and invocation for exact historical replay.

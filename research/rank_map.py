@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .io import load_pack, load_pack_metadata
+from mlx_plastic_rank.packs.io import load_pack, load_pack_metadata
 
 
 @dataclass(frozen=True)

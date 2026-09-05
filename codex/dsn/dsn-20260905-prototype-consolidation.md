@@ -113,12 +113,67 @@ and `pytest tests` includes all 330 cases. An assertion audit confirms all 85
 expected values in the 29 parser acceptance scenarios were retained, alongside
 the two rejection cases and routing scenario. Current documentation links resolve.
 
+## Source and correctness follow-through
+
+The initial compatibility boundary above is superseded by an actual package
+boundary. Parked controllers, the vault, spectral-map discovery, polynomial
+probes and benchmark entry points now live in repository-only `research/`.
+Their functional tests remain explicit. The built wheel contains 26 Python
+modules and no research package. Installed Python source falls from 19,310 to
+10,941 lines relative to revision `1c308ec` (43.3%); preserved experiment source
+is excluded from this installed-surface measure, not deleted from history.
+
+Normal pack creation requires fixed rank, a supplied rank map or a resume pack.
+New initialization defaults to `component-v1`; historical experiments retain
+explicit `legacy` behavior. Automatic/dynamic and spectral-discovery CLI flags
+are retired. Shared training and pack-validation paths replace duplicate logic.
+Historical CLI replay uses the recorded revision or saved source snapshots.
+
+Five reproduced defects are repaired: checkpoint identity now covers all files
+and requires verified full provenance for legacy hashes; overlap bases use the
+actual update SVD so reciprocal scaling cannot inflate rank; training, loading
+and export reject non-finite values and float16 overflow; polynomial spectral
+probes remove complete matched eigenspaces; uint8 factor exports accept only
+the implemented eight-bit quantization contract. Regression checks exercise
+each failure, including rollback/dropout restoration and malformed metadata.
+
+`RankLayer` applies its residual through factors, avoiding dense materialization.
+Gated adapters select nonzero columns before multiplication and retain fractional
+gate semantics. [Forward measurements](../evidence/forward_workspace_20260905.json)
+compare the exact previous methods with the updated methods in fresh processes,
+using identical synthetic tensors and thirty timed forwards after warmup.
+
+| Forward / tokens | Previous temporary peak bytes | Updated temporary peak bytes | Reduction |
+| --- | ---: | ---: | ---: |
+| RankLayer / 1 | 8,658,952 | 16,648 | 99.81% |
+| RankLayer / 64 | 10,223,624 | 2,637,832 | 74.20% |
+| Gated adapter / 1 | 532,744 | 205,036 | 61.51% |
+| Gated adapter / 64 | 1,589,256 | 856,200 | 46.13% |
+
+These are MLX allocator increments above resident tensors, not process RSS or
+whole-model savings. Gated resident storage is unchanged because inactive factors
+remain stored. Maximum relative output difference was 5.71e-7 for RankLayer and
+zero for the gated adapter. The first 64-token gated timing was slower; two
+additional pairs with reversed execution order did not reproduce that gap.
+All twelve measurements are retained. No consistent gated latency improvement
+or regression is established, and no universal speed claim follows.
+
+Final follow-through validation: **365 tests passed in 253.59 seconds**, with no
+skips: 48 core, 192 pack, 28 utility and 97 explicit research cases. Collection
+confirms the default command selects only the first 268. Ruff and mypy pass
+(56 checked source files); the lockfile and Python pin are unchanged. The
+ten-step demo keeps its base fixed, follows active rank 4→2→4, conserves four
+components and restores with residual-relative error 0.002172. The built wheel's
+own imports, small factor forward and fixed-rank CLI work without importing
+research. All local Markdown links and diff whitespace checks pass. Validation
+uses local synthetic fixtures; real-model quality remains unmeasured here.
+
 ## Next decision and stop conditions
 
-[DSN-20260905-05](dsn-20260905-baseline-validity-diagnostic.md) proposes one dense
-baseline diagnostic on stored development arrays. It is not implemented or run
-by this consolidation. Its result must select one justified follow-up before
-more adaptive comparisons. No reserved evidence seeds, controller retuning,
+[DSN-20260905-05](dsn-20260905-baseline-validity-diagnostic.md) completed the dense
+baseline diagnostic on stored development arrays. All frozen gates passed,
+including broken-pairing controls. Its result selects a separately declared
+factorized-baseline diagnosis before more adaptive comparisons. No reserved evidence seeds, controller retuning,
 return-A runs, model downloads or broader product expansion are authorized by
 this scope decision alone.
 

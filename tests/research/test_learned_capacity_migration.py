@@ -4,8 +4,8 @@ import json
 import mlx.core as mx
 import pytest
 
-import mlx_plastic_rank.packs.learned_capacity_migration as migration
-from mlx_plastic_rank.packs.learned_capacity_migration import (
+import research.learned_capacity_migration as migration
+from research.learned_capacity_migration import (
     CORE_CONDITIONS,
     LearnedMigrationConfig,
     _aggregate,
@@ -17,7 +17,7 @@ from mlx_plastic_rank.packs.learned_capacity_migration import (
     run_learned_capacity_migration,
     write_artifacts,
 )
-from scripts.learned_capacity_migration_benchmark import main
+from research.learned_capacity_migration_benchmark import main
 
 
 @pytest.fixture(scope="module")

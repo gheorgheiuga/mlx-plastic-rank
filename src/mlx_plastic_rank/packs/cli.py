@@ -44,7 +44,13 @@ from .device_profiles import (
 )
 from .eval_utils import load_domain_prompts, parse_batch_sizes, parse_thinking_option
 from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize_pack
-from .io import compute_sha256, load_pack_metadata, save_pack, save_pack_metadata
+from .io import (
+    compute_sha256,
+    load_pack_metadata,
+    save_pack,
+    save_pack_metadata,
+    validate_base_identity,
+)
 from .manager import LoRAManager, PackApplicationError
 from .proof import DomainPackProofConfig, build_domain_pack_proof
 from .provenance import (
@@ -77,7 +83,6 @@ from .rank_ledger import (
     ledger_rows_for_csv,
     pack_rank_ledger,
 )
-from .rank_map import SpectralRankMapConfig, build_spectral_rank_map_candidate
 from .router import DomainPackRouter, load_domain_map
 from .train import TrainingConfig, model_logits, train_lora, train_lora_supervised
 
@@ -157,6 +162,7 @@ def _load_base_model(base_ref: str, loader: str = "auto"):
     # Keep the resolved immutable snapshot with the returned tokenizer so
     # callers identify what was actually loaded, rather than a moving HF ref.
     tokenizer._poprank_checkpoint = str(checkpoint)
+    model._poprank_checkpoint = str(checkpoint)
     return model, tokenizer
 
 
@@ -197,12 +203,17 @@ def _resolve_base_checkpoint(base_ref: str) -> Path | None:
     return None
 
 
+def _loaded_checkpoint(model, fallback: Path | None) -> Path | None:
+    checkpoint = getattr(model, "_poprank_checkpoint", None)
+    return Path(checkpoint) if checkpoint else fallback
+
+
 def _parse_lora_dropout(raw: str) -> float:
     try:
         value = float(raw)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"Invalid dropout value '{raw}'") from exc
-    if value < 0.0 or value >= 1.0:
+    if not math.isfinite(value) or value < 0.0 or value >= 1.0:
         raise argparse.ArgumentTypeError("LoRA dropout must be in the range [0.0, 1.0).")
     return value
 
@@ -424,8 +435,6 @@ def cmd_create(args: argparse.Namespace) -> None:
     pack_dir = _default_pack_dir(args.name)
     if pack_dir.exists() and not args.force:
         raise SystemExit(f"Pack '{args.name}' already exists. Use --force to overwrite.")
-    if args.resume_pack and args.dynamic_rank:
-        raise SystemExit("--resume-pack is a frozen-rank continuation path; omit --dynamic-rank.")
     if args.resume_pack and args.rank is not None:
         raise SystemExit("--resume-pack uses the existing per-adapter ranks; omit --rank.")
     if args.resume_pack and args.zero_init:
@@ -436,18 +445,13 @@ def cmd_create(args: argparse.Namespace) -> None:
         raise SystemExit("--resume-pack and --rank-map-json are mutually exclusive.")
     if args.rank_map_from_pack and args.rank_map_json:
         raise SystemExit("--rank-map-from-pack and --rank-map-json are mutually exclusive.")
-    if args.rank_map_from_pack and args.dynamic_rank:
-        raise SystemExit("--rank-map-from-pack is a fixed-rank ablation path; omit --dynamic-rank.")
-    if args.rank_map_json and args.dynamic_rank:
-        raise SystemExit("--rank-map-json is a fixed-rank ablation path; omit --dynamic-rank.")
     if args.rank_map_from_pack and args.rank is not None:
         raise SystemExit("--rank-map-from-pack uses source metadata ranks; omit --rank.")
     if args.rank_map_json and args.rank is not None:
         raise SystemExit("--rank-map-json uses JSON metadata ranks; omit --rank.")
-    if args.rank_map_from_pack and args.min_rank > 0:
-        raise SystemExit("--rank-map-from-pack uses source metadata ranks; omit --min-rank.")
-    if args.rank_map_json and args.min_rank > 0:
-        raise SystemExit("--rank-map-json uses JSON metadata ranks; omit --min-rank.")
+
+    if args.rank is None and not (args.resume_pack or args.rank_map_from_pack or args.rank_map_json):
+        raise SystemExit("Choose a fixed --rank (for example 4), --rank-map-json, or an existing pack to resume")
 
     print(f"Loading base model from {base_ref}...")
     model, tokenizer = _load_base_model(base_ref, args.loader)
@@ -468,9 +472,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         if converted:
             print(f"Dequantized {converted} quantized linear layers for training fallback")
 
-    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
-    if base_checkpoint is None:
-        print("Warning: --base is not a local path; base hash verification will be skipped.")
+    manager = LoRAManager(model, base_checkpoint=_loaded_checkpoint(model, base_checkpoint), base_model=base_ref)
 
     layers = [layer.strip() for layer in args.layers.split(",") if layer.strip()]
     canonical_layers = [_resolve_target(layer) for layer in layers]
@@ -514,12 +516,6 @@ def cmd_create(args: argparse.Namespace) -> None:
         rank_map: Dict[str, int] = {}
         alpha_map: Dict[str, float] = {}
 
-        def _snap_to_allowed(candidate: int) -> int:
-            for allowed in sorted(allowed_ranks):
-                if allowed >= int(candidate):
-                    return allowed
-            return sorted(allowed_ranks)[-1]
-
         if args.rank_map_from_pack:
             source_dir = _resolve_pack_dir(args.rank_map_from_pack)
             if not source_dir.exists():
@@ -550,33 +546,10 @@ def cmd_create(args: argparse.Namespace) -> None:
                 rank_map[target] = args.rank
                 alpha_map[target] = 2.0 * args.rank
                 print(f"  {target}: rank={rank_map[target]}")
-        else:
-            auto_rank_map, _, residuals = manager.compute_auto_ranks(
-                canonical_layers,
-                strategy=args.rank_strategy,
-                target_compression=args.target_compression,
-                eps=args.rank_eps,
-                allowed_ranks=allowed_ranks,
-            )
-            print(f"Auto-selected ranks ({args.rank_strategy}, profile={args.profile}):")
-            for target in canonical_layers:
-                selected_rank = auto_rank_map[target]
-                if args.min_rank > 0:
-                    selected_rank = _snap_to_allowed(max(selected_rank, args.min_rank))
-                rank_map[target] = selected_rank
-                alpha_map[target] = 2.0 * selected_rank
-                res = residuals[target]
-                print(f"  {target}: rank={rank_map[target]} residual={res:.4g}")
-
         base_rank = rank_map.get("attn.q_proj", next(iter(rank_map.values())))
         base_alpha = alpha_map.get("attn.q_proj", 2.0 * base_rank)
 
         print(f"Initialising adapters on layers: {canonical_layers}")
-        if args.dynamic_rank:
-            print(
-                "Dynamic rank enabled: "
-                f"max ranks={rank_map} initial_active_rank={args.dynamic_initial_rank}"
-            )
         adapters = manager.initialize_adapters(
             canonical_layers,
             rank=base_rank,
@@ -586,7 +559,6 @@ def cmd_create(args: argparse.Namespace) -> None:
             alpha_map=alpha_map,
             dropout=args.lora_dropout,
             allowed_ranks=allowed_ranks,
-            initial_active_rank=args.dynamic_initial_rank if args.dynamic_rank else None,
             initialization=args.initialization,
         )
         if args.zero_init:
@@ -614,13 +586,6 @@ def cmd_create(args: argparse.Namespace) -> None:
         sequence_length=args.sequence_length,
         log_interval=max(1, args.steps // 10),
         lora_dropout=args.lora_dropout,
-        dynamic_rank=args.dynamic_rank,
-        dynamic_rank_interval=args.dynamic_rank_interval,
-        dynamic_rank_warmup=args.dynamic_rank_warmup,
-        dynamic_rank_min=args.dynamic_min_rank,
-        dynamic_rank_grow_threshold=args.dynamic_grow_threshold,
-        dynamic_rank_prune_threshold=args.dynamic_prune_threshold,
-        dynamic_rank_allowed_ranks=allowed_ranks,
         batch_seed=batch_seed,
         training_seed=training_seed,
         batch_schedule_path=Path(args.batch_schedule) if args.batch_schedule else None,
@@ -676,15 +641,12 @@ def cmd_create(args: argparse.Namespace) -> None:
         "profile": args.profile,
         "layers": canonical_layers,
         "rank": args.rank,
-        "rank_strategy": args.rank_strategy,
         "rank_map_from_pack": args.rank_map_from_pack,
         "rank_map_json": args.rank_map_json,
         "resume_pack": args.resume_pack,
-        "dynamic_rank": bool(args.dynamic_rank),
-        "dynamic_initial_rank": int(args.dynamic_initial_rank),
-        "dynamic_min_rank": int(args.dynamic_min_rank),
         "training_samples": training_samples,
         "final_loss": float(final_loss),
+        "final_loss_stage": "before_last_update",
     }
     if training_coverage is not None:
         metadata.training_config["dataset_coverage"] = training_coverage.as_metrics()
@@ -715,14 +677,13 @@ def cmd_apply(args: argparse.Namespace) -> None:
 
     print(f"Inspecting pack '{args.name}'...")
     metadata, infos, _, total_bytes, non_lora = summarize_pack(pack_dir)
-    if base_checkpoint is not None:
-        base_hash = compute_sha256(base_checkpoint)
-        if metadata.base_hash and metadata.base_hash != base_hash:
-            raise SystemExit(
-                f"Base hash mismatch: pack built for {metadata.base_hash[:8]}, base is {base_hash[:8]}"
-            )
-    elif metadata.base_hash:
-        print("Warning: --base is not a local path; base hash verification skipped.")
+    if args.dry_run:
+        # Resolving a Hub snapshot supplies its full identity without loading a model.
+        base_checkpoint = base_checkpoint or resolve_model_checkpoint(base_ref)
+        try:
+            validate_base_identity(metadata, checkpoint_hash=content_sha256(base_checkpoint), base_model=base_ref)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
     if non_lora:
         raise SystemExit(f"Pack contains non-LoRA tensors: {non_lora}")
     limit = size_limit_for(metadata)
@@ -745,7 +706,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
         return
 
     model, _ = _load_base_model(base_ref, args.loader)
-    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
+    manager = LoRAManager(model, base_checkpoint=_loaded_checkpoint(model, base_checkpoint), base_model=base_ref)
     try:
         metadata = manager.apply_pack(pack_dir)
     except PackApplicationError as exc:
@@ -1278,56 +1239,6 @@ def cmd_rank_ledger(args: argparse.Namespace) -> None:
         print(f"Rank ledger CSV written to {csv_path}")
 
 
-def cmd_rank_map_spectral(args: argparse.Namespace) -> None:
-    source_dir = _resolve_pack_dir(args.source_pack)
-    if not source_dir.exists():
-        raise SystemExit(f"Rank-map source pack '{args.source_pack}' not found at {source_dir}")
-    try:
-        source_metadata = load_pack_metadata(source_dir / "meta.json")
-    except FileNotFoundError as exc:
-        raise SystemExit(f"Rank-map source pack '{args.source_pack}' has no meta.json.") from exc
-
-    profile = args.profile or source_metadata.profile
-    try:
-        allowed_ranks = allowed_ranks_for(profile)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
-
-    spectral_paths: list[Path] = []
-    for value in [args.q_spectral, args.k_spectral, args.v_spectral]:
-        if value:
-            spectral_paths.append(Path(value).expanduser())
-    spectral_paths.extend(Path(value).expanduser() for value in args.spectral)
-    if not spectral_paths:
-        raise SystemExit("At least one spectral probe JSON is required.")
-    if args.budget_params is not None and args.budget_mb is not None:
-        raise SystemExit("Use only one budget: --budget-params or --budget-mb.")
-    budget_bytes = None
-    if args.budget_mb is not None:
-        budget_bytes = int(args.budget_mb * 1024 * 1024)
-
-    config = SpectralRankMapConfig(
-        allowed_ranks=allowed_ranks,
-        budget_params=args.budget_params,
-        budget_bytes=budget_bytes,
-        policy=args.policy,
-        promote_low_lift=args.promote_low_lift,
-        promote_rank=args.promote_rank,
-        demote_min_rank=args.demote_min_rank,
-    )
-    try:
-        report = build_spectral_rank_map_candidate(source_dir, spectral_paths, config)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
-
-    print(json.dumps(report, indent=2))
-    if args.out:
-        out_path = Path(args.out)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-        print(f"Spectral rank map written to {out_path}")
-
-
 def cmd_proof(args: argparse.Namespace) -> None:
     pack_dir = _resolve_pack_dir(args.pack)
     if not pack_dir.exists():
@@ -1451,7 +1362,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
         evaluated_model_sha = model_sha
         evaluated_checkpoint = checkpoint
         attached_identity = pack_identity(pack_dir) if pack_dir is not None else None
-        manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=model_ref)
+        manager = LoRAManager(model, base_checkpoint=_loaded_checkpoint(model, base_checkpoint), base_model=model_ref)
         pack_name = None
         pack_size = 0
         if pack_dir is not None:
@@ -1618,7 +1529,7 @@ def cmd_eval_batch(args: argparse.Namespace) -> None:
     prompts_by_domain = load_domain_prompts(Path(args.input), thinking_mode, cap_tokens)
 
     model, tokenizer = _load_base_model(base_ref, args.loader)
-    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
+    manager = LoRAManager(model, base_checkpoint=_loaded_checkpoint(model, base_checkpoint), base_model=base_ref)
 
     datasets: Dict[str, mx.array] = {}
     for domain, texts in prompts_by_domain.items():
@@ -1644,14 +1555,6 @@ def cmd_eval_batch(args: argparse.Namespace) -> None:
             raise SystemExit(
                 f"Pack size {total_bytes / (1024**2):.2f} MB exceeds limit {(limit / (1024**2)):.1f} MB"
             )
-        if base_checkpoint is not None:
-            base_hash = compute_sha256(base_checkpoint)
-            if metadata.base_hash and metadata.base_hash != base_hash:
-                raise SystemExit(
-                    f"Base hash mismatch: pack built for {metadata.base_hash[:8]}, base is {base_hash[:8]}"
-                )
-        elif metadata.base_hash:
-            print("Warning: --base is not a local path; base hash verification skipped.")
         pack_size_mb = total_bytes / (1024**2)
         try:
             manager.apply_pack(pack_dir)
@@ -1733,7 +1636,7 @@ def cmd_route(args: argparse.Namespace) -> None:
     print(f"Loaded {len(domain_map)} domain entries from {domain_map_path}")
     print(f"Loading base model from {base_ref}...")
     model, tokenizer = _load_base_model(base_ref, args.loader)
-    manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=base_ref)
+    manager = LoRAManager(model, base_checkpoint=_loaded_checkpoint(model, base_checkpoint), base_model=base_ref)
     router = DomainPackRouter(
         manager,
         domain_map,
@@ -1827,27 +1730,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Model loader; auto uses mlx-vlm for Gemma 4 unified any-to-any bases.",
     )
-    create.add_argument(
-        "--rank-strategy",
-        choices=["stable", "gram_energy", "theorem"],
-        default="gram_energy",
-        help=(
-            "Automatic LoRA rank heuristic. 'gram_energy' is the preferred name; "
-            "'theorem' is a legacy alias."
-        ),
-    )
-    create.add_argument(
-        "--target-compression",
-        type=float,
-        default=0.9,
-        help="Energy fraction for automatic rank selection",
-    )
-    create.add_argument(
-        "--rank-eps",
-        type=float,
-        default=1e-6,
-        help="Numerical tolerance for Gram-energy rank selection",
-    )
     create.add_argument("--data", required=True)
     create.add_argument(
         "--chat-template",
@@ -1871,7 +1753,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seed for the isolated minibatch schedule; defaults to --seed.",
     )
     create.add_argument(
-        "--initialization", choices=("legacy", "component-v1"), default="legacy",
+        "--initialization", choices=("legacy", "component-v1"), default="component-v1",
         help="Use component-v1 for factors matched across ranks and target order; legacy reproduces older runs.",
     )
     create.add_argument(
@@ -1903,55 +1785,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--rank-map-json",
         help="Initialise fresh adapters using a JSON object of target or adapter-specific ranks.",
     )
-    create.add_argument(
-        "--min-rank",
-        type=_parse_min_rank,
-        default=0,
-        help="Optional minimum rank floor after auto-selection (snapped to allowed ranks)",
-    )
     create.add_argument("--zero-init", action="store_true")
     create.add_argument("--lora-dropout", type=_parse_lora_dropout, default=0.0)
-    create.add_argument(
-        "--dynamic-rank",
-        action="store_true",
-        help="Train with gated active rank and export only active rank columns.",
-    )
-    create.add_argument(
-        "--dynamic-initial-rank",
-        type=_parse_rank,
-        default=4,
-        help="Initial active rank when --dynamic-rank is enabled.",
-    )
-    create.add_argument(
-        "--dynamic-min-rank",
-        type=_parse_rank,
-        default=2,
-        help="Minimum active rank per adapter when dynamic rank can shrink.",
-    )
-    create.add_argument(
-        "--dynamic-rank-interval",
-        type=int,
-        default=50,
-        help="Training steps between dynamic rank adjustments.",
-    )
-    create.add_argument(
-        "--dynamic-rank-warmup",
-        type=int,
-        default=50,
-        help="Training steps before dynamic rank adjustments start.",
-    )
-    create.add_argument(
-        "--dynamic-grow-threshold",
-        type=float,
-        default=0.25,
-        help="Grow adapters whose rank signal is at least this fraction of the strongest adapter.",
-    )
-    create.add_argument(
-        "--dynamic-prune-threshold",
-        type=float,
-        default=0.03,
-        help="Shrink adapters whose rank signal is at most this fraction of the strongest adapter.",
-    )
     create.add_argument("--notes", default="")
     create.add_argument(
         "--profile",
@@ -2347,66 +2182,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optionally write a consumable rank_map/alpha_map JSON",
     )
     rank_map_validate.set_defaults(func=cmd_rank_map_validate)
-
-    rank_map_spectral = rank_map_subparsers.add_parser(
-        "spectral",
-        help="Generate a spectral-key-biased rank-map JSON candidate",
-    )
-    rank_map_spectral.add_argument(
-        "--source-pack",
-        required=True,
-        help="Pack name under packs/ or a direct pack directory containing meta.json and pack.safetensors",
-    )
-    rank_map_spectral.add_argument(
-        "--spectral",
-        action="append",
-        default=[],
-        help="Spectral probe JSON path; repeat for q/k/v outputs, or use the target-specific options",
-    )
-    rank_map_spectral.add_argument("--q-spectral", help="q_proj spectral probe JSON path")
-    rank_map_spectral.add_argument("--k-spectral", help="k_proj spectral probe JSON path")
-    rank_map_spectral.add_argument("--v-spectral", help="v_proj spectral probe JSON path")
-    rank_map_spectral.add_argument("--out", help="Write rank-map JSON candidate to this path")
-    rank_map_spectral.add_argument(
-        "--profile",
-        choices=["lite", "heavy"],
-        help="Allowed rank profile; defaults to the source pack profile",
-    )
-    rank_map_spectral.add_argument(
-        "--policy",
-        choices=["balanced", "all-key"],
-        default="balanced",
-        help="Promotion scope: balanced promotes full-attention key adapters; all-key considers every key adapter",
-    )
-    rank_map_spectral.add_argument(
-        "--budget-params",
-        type=int,
-        help="Maximum estimated LoRA parameter budget; defaults to the source pack estimate",
-    )
-    rank_map_spectral.add_argument(
-        "--budget-mb",
-        type=float,
-        help="Maximum estimated fp16 LoRA storage budget in MiB",
-    )
-    rank_map_spectral.add_argument(
-        "--promote-low-lift",
-        type=float,
-        default=1.4,
-        help="Minimum low_8_lift needed before an adapter is promoted",
-    )
-    rank_map_spectral.add_argument(
-        "--promote-rank",
-        type=int,
-        default=32,
-        help="Target rank for promoted adapters, snapped down to the allowed rank ladder",
-    )
-    rank_map_spectral.add_argument(
-        "--demote-min-rank",
-        type=int,
-        default=4,
-        help="Lowest rank allowed for compensation demotions, snapped down to the allowed rank ladder",
-    )
-    rank_map_spectral.set_defaults(func=cmd_rank_map_spectral)
 
     proof = subparsers.add_parser(
         "proof",

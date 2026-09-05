@@ -62,9 +62,8 @@ Prototype consolidation (2026-09-05) moves the existing extractors' optional
 `datasets` loader to the `data` extra. Their row construction, source/license
 metadata and split generation are unchanged; no data was regenerated. The new
 default lifecycle demo uses seeded synthetic residuals and prints only numerical
-checks, with no external data or model weights. The proposed dense baseline
-diagnostic has not generated an artifact. This does not refresh upstream license
-verification dates.
+checks, with no external data or model weights. This does not refresh upstream
+license verification dates.
 
 - The fault-code pilot references the Hugging Face dataset
   `avneetsingla/industrial-fault-codes-sample`
@@ -105,3 +104,33 @@ redistributing weights, generated packs, or derived artifacts.
   an explicit license tag. Treat it as subject to the upstream Gemma 4 / Google
   model terms until the card is made explicit, and do not redistribute weights or
   packs trained from it without confirming the applicable terms.
+
+
+## September prototype diagnostics
+
+`research/baseline_diagnostic.py` derives dense reference coefficients and
+measurements from the unchanged seed 31–35 archives of the local gradient-
+agreement development package. No external data, teacher weights or new task
+samples enter fitting. Outputs identify the original receipts, exact input and
+source bytes, NumPy/runtime versions, command and protocol. Generated artifacts
+remain under ignored `out/baseline_diagnostic/`; any committed summary contains
+only derived measurements and identities. This does not refresh upstream license
+checks or establish a learned allocation result.
+
+`codex/evidence/baseline_diagnostic_seed31_35.json` records the completed twenty-fit
+diagnostic and independent receipt/coefficient audit. The source snapshots in
+the ignored result package preserve the attribution and declaration before the
+first retained-data fit; the current result documentation was written afterwards.
+
+`codex/evidence/forward_workspace_20260905.json` records twelve isolated synthetic
+forward measurements from `scripts/bench_forward.py`, including timing follow-ups.
+Seeded factors and inputs are locally generated. Baseline methods come from
+MIT-licensed repository revision `1c308ec`; exact source and raw timing records
+remain under ignored `out/forward_review_20260905/`. No third-party datasets or
+model weights are included. These measurements describe temporary allocations,
+not learned quality or whole-model memory savings.
+
+The mathematical contract cites Pop (2020/2021), Pop–Negrescu (2024), and
+Pop–Todea (2024). Implementations and small rational test fixtures are original
+repository code; no third-party implementation or paper text is redistributed.
+Moved research modules retain their original repository license and history.

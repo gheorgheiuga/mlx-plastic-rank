@@ -20,7 +20,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from .packs.io import load_pack, load_pack_metadata
+from mlx_plastic_rank.packs.io import load_pack, load_pack_metadata
 
 
 @dataclass(frozen=True)
@@ -384,15 +384,14 @@ def _basis_rank(matrix: np.ndarray) -> int:
 
 def _spectral_root_mask(eigenvalues: np.ndarray, roots: Sequence[float]) -> np.ndarray:
     mask = np.zeros(eigenvalues.shape, dtype=bool)
-    used: set[int] = set()
+    # A polynomial zero removes the entire corresponding eigenspace. Choosing
+    # one nearest eigenvector silently undercounts repeated eigenvalues.
+    tolerance = 8 * np.finfo(np.float32).eps * max(1.0, float(np.max(np.abs(eigenvalues))))
     for root in roots:
-        distances = np.abs(eigenvalues - float(root))
-        for index in np.argsort(distances):
-            selected = int(index)
-            if selected not in used:
-                used.add(selected)
-                mask[selected] = True
-                break
+        matches = np.abs(eigenvalues - float(root)) <= tolerance
+        if not np.any(matches):
+            raise ValueError(f"Spectral root {root} does not match an eigenvalue within tolerance")
+        mask |= matches
     return mask
 
 

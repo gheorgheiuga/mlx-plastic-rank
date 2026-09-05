@@ -1,7 +1,7 @@
 # DSN-20260905-05 — Diagnose baseline validity before controller work
 
-- **Status:** Proposed; not implemented or run
-- **Evidence status:** No diagnostic result yet; motivated by the failed DSN-20260905-03 development gate
+- **Status:** Experimental; bounded diagnostic completed, all declared gates passed
+- **Evidence status:** Ten dense references generalize on saved seeds 31–35; ten broken-pairing controls fail as expected. No controller or factorized-budget result.
 - **Decision index:** ADR-0016 in `codex/decisions.md`
 - **Scope parent:** DSN-20260905-04
 
@@ -81,3 +81,48 @@ Before the first development-data fit, freeze this declaration and the tested
 source bytes in the result package. If implementation requires a design change,
 revise this Proposed DSN before inspecting results. Publish no inferential
 controller ranking and make no quality, theorem, erasure or memory-savings claim.
+
+
+## Implementation declaration before the first retained-data fit
+
+The runner is `uv run --locked python -m research.baseline_diagnostic --output-dir
+out/baseline_diagnostic/<new-name>`. It pins the original completed development
+receipt (`46e38b4684226981b05e1def0253671752454d7aff79cfdc6d0fa415656a5c6e`),
+verifies every receipt entry, and copies the five verified input archives before
+fitting. It reads only the declared training/held-out features, saved routes,
+targets and binary head masks; teacher transforms and probe arrays are excluded.
+
+The fit uses the supervised output columns, which gives the same mean squared
+loss as the original binary mask. Negative-control `fit_train` scores use shifted
+training targets; `train` and `heldout` scores always use the original targets.
+Every fitted coefficient matrix, spectrum, cutoff and input/source identity is
+retained. Condition numbers that are undefined for a singular design are null;
+all fitted values and losses must be finite. The original gates are unchanged.
+
+Unit tests use independent small artificial fixtures, including changed held-out
+targets, irrelevant poisoned teacher arrays, tampered receipts and timeouts.
+Source, protocol, lockfile and attribution are copied before fitting. The runner
+refuses existing output directories and records partial failures and receipts.
+No seed, cutoff, fit budget or gate will be changed after viewing the results.
+
+## Recorded outcome — 2026-09-05
+
+The first retained-data execution completed all twenty fits in 0.066 seconds.
+Every reference passed the frozen 0.95 train/held-out gates; the lowest held-out
+score was 0.999999999999925. Every shifted-target control scored below 0.50
+(range −17.647 to −0.940). All 32 × 24 designs had numerical rank 24, with
+condition numbers 19.56–74.49. The original input receipt and all 37 diagnostic
+receipt entries verified; independent saved-coefficient measurements agree.
+
+[Results and reproducibility](../research/baseline-diagnostic-results.md) link
+the compact machine-readable evidence and exact artifact identities. The output
+package retains the pre-run declaration and tested source bytes; this outcome
+section was added afterwards. Inputs and original failed controller artifacts
+remain unchanged. No reserved seed, new fixture, adaptive matrix or gate change
+was used.
+
+Follow the first decision-table branch: separately declare a factorized-baseline
+diagnosis of representation, optimization and allocation at matched checkpoints.
+An unconstrained fit does not establish rank-six feasibility or blame SGD alone.
+The factorized readiness and joint-capacity failures remain unresolved, so
+gradient agreement stays parked. No additional study has been run here.

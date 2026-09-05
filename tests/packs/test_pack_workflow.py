@@ -100,3 +100,35 @@ def test_bakeoff_trains_proves_resumes_and_rejects_changed_inputs(tmp_path: Path
     with pytest.raises(bakeoff.BakeoffError, match="Stale or unverified"):
         bakeoff.run_bakeoff(spec)
     assert len(phases_run) == 4
+
+
+@pytest.mark.parametrize("field,value", [
+    ("learning_rate", float("nan")), ("learning_rate", float("inf")),
+    ("learning_rate", -1.0), ("steps", 0), ("batch_size", 0),
+    ("sequence_length", 1), ("log_interval", 0), ("lora_dropout", float("nan")),
+])
+def test_training_rejects_invalid_configuration(field, value):
+    from mlx_plastic_rank.packs.train import TrainingConfig
+
+    with pytest.raises(ValueError, match=field):
+        TrainingConfig(**{field: value})
+
+
+@pytest.mark.parametrize("supervised", [False, True])
+def test_invalid_update_restores_parameters_and_dropout(supervised):
+    from mlx_plastic_rank.packs.manager import LoRAManager
+    from mlx_plastic_rank.packs.train import TrainingConfig, train_lora, train_lora_supervised
+
+    model = TinyModel()
+    manager = LoRAManager(model)
+    manager.initialize_adapters(["attn.q_proj"], rank=2, alpha=4, seed=0)
+    before = manager.trainable_parameters()
+    config = TrainingConfig(steps=1, batch_size=1, learning_rate=1e30, lora_dropout=0.25)
+    tokens = mx.array([[2, 2, 2]], dtype=mx.int32)
+    with pytest.raises(ValueError, match="Non-finite updated parameters"):
+        if supervised:
+            train_lora_supervised(manager, model, tokens, mx.ones(tokens.shape), config)
+        else:
+            train_lora(manager, model, tokens, config)
+    assert manager.current_dropout == 0
+    assert all(mx.array_equal(a, b).item() for a, b in zip(before, manager.trainable_parameters()))

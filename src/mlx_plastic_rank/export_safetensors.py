@@ -60,10 +60,9 @@ def pack_lowrank(U: mx.array, S: mx.array, Vh: mx.array, bits: int = 8) -> Dict[
 
     Returns a dict of numpy arrays ready for safetensors saving.
     """
-    m, r = U.shape
-    r2, n = Vh.shape
-    assert r == r2 == S.shape[0]
     packed = quantize_factors(U, S, Vh, bits=bits)
+    m, r = U.shape
+    _, n = Vh.shape
     (qU, minU, scU) = packed["U"]
     (qS, s_min, s_scale) = packed["S"]
     (qVh, minVh, scVh) = packed["Vh"]
@@ -90,7 +89,41 @@ def pack_lowrank(U: mx.array, S: mx.array, Vh: mx.array, bits: int = 8) -> Dict[
 def save_lowrank(path: str, packed: Dict[str, Any]) -> None:
     from safetensors.numpy import save_file
 
+    _validate_lowrank_pack(packed)
     save_file(packed, path)
+
+
+def _validate_lowrank_pack(tensors: Dict[str, Any]) -> None:
+    """Validate the declared eight-bit schema before decoding or writing."""
+    import numpy as np
+
+    required = {f"{factor}.{field}" for factor in ("U", "S", "Vh") for field in ("q", "min", "scale")}
+    required.add("__meta__.json")
+    if set(tensors) != required:
+        raise ValueError("Low-rank file has missing or unexpected tensors")
+    encoded = tensors["__meta__.json"]
+    if encoded.dtype != np.uint8 or encoded.ndim != 1:
+        raise ValueError("Low-rank metadata must be a uint8 vector")
+    try:
+        meta = json.loads(encoded.tobytes().decode("utf-8"))
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("Invalid low-rank metadata JSON") from exc
+    if not isinstance(meta, dict) or meta.get("version") != "0.1.0" or type(meta.get("bits")) is not int or meta["bits"] != 8:
+        raise ValueError("Unsupported low-rank version or quantization bits")
+    shape, rank = meta.get("shape"), meta.get("rank")
+    if not isinstance(shape, list) or len(shape) != 2 or any(type(dim) is not int or dim <= 0 for dim in shape) or type(rank) is not int or rank <= 0:
+        raise ValueError("Invalid low-rank shape or rank metadata")
+    m, n = shape
+    for factor, q_shape, scalar_shape in (("U", (m, rank), (m,)), ("S", (rank,), (1,)), ("Vh", (rank, n), (rank,))):
+        q = tensors[f"{factor}.q"]
+        if q.dtype != np.uint8 or q.shape != q_shape:
+            raise ValueError(f"Invalid {factor} quantized dtype or shape")
+        for field in ("min", "scale"):
+            value = tensors[f"{factor}.{field}"]
+            if value.dtype != np.float32 or value.shape != scalar_shape or not np.isfinite(value).all():
+                raise ValueError(f"Invalid {factor}.{field} dtype, shape or values")
+        if np.any(tensors[f"{factor}.scale"] <= 0):
+            raise ValueError(f"{factor} scales must be positive")
 
 
 def load_lowrank(path: str) -> Tuple[mx.array, mx.array, mx.array]:
@@ -101,6 +134,7 @@ def load_lowrank(path: str) -> Tuple[mx.array, mx.array, mx.array]:
     from safetensors.numpy import load_file
 
     tensors = load_file(path)
+    _validate_lowrank_pack(tensors)
     qU = mx.array(tensors["U.q"])  # uint8
     minU = mx.array(tensors["U.min"])  # float32
     scU = mx.array(tensors["U.scale"])  # float32
@@ -126,7 +160,7 @@ if __name__ == "__main__":  # CLI exporter
     parser = argparse.ArgumentParser(description="Export low-rank compressed weights to .safetensors")
     parser.add_argument("--from-weight", required=True, help="Path to weight matrix (.pt)")
     parser.add_argument("--rank", type=int, required=True, help="Target rank r")
-    parser.add_argument("--bits", type=int, default=8, help="Quantization bits")
+    parser.add_argument("--bits", type=int, choices=[8], default=8, help="Quantization bits")
     parser.add_argument("--out", required=True, help="Output .safetensors path")
     args = parser.parse_args()
 

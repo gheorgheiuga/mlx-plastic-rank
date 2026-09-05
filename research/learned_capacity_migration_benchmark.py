@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
-from mlx_plastic_rank.packs.learned_capacity_migration import (
+from research.learned_capacity_migration import (
     LearnedMigrationConfig,
     run_learned_capacity_migration,
     write_artifacts,

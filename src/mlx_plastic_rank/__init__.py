@@ -1,8 +1,7 @@
 """Small, lazy low-rank API.
 
-Legacy manager, theorem-named and vault aliases remain explicitly importable
-for compatibility, but are excluded from the advertised core surface.
-See DSN-20260905-04 for the active prototype boundary.
+Parked controllers and polynomial probes live in the repository-only research
+package. They are not imported or included in installed distributions.
 """
 
 __all__ = [
@@ -63,34 +62,5 @@ def __getattr__(name: str):
             "dequantise": dequantise,
             "set_seed": set_seed,
             "get_logger": get_logger,
-        }[name]
-    if name == "PlasticityManager":
-        from .plasticity_manager import PlasticityManager
-
-        return PlasticityManager
-    if name in {
-        "DeletionCertificate",
-        "ForgetPolicy",
-        "ForgettingVault",
-        "MemoryRecord",
-        "VerificationReport",
-        "verify_certificate_chain",
-    }:
-        from .forgetting_vault import (
-            DeletionCertificate,
-            ForgetPolicy,
-            ForgettingVault,
-            MemoryRecord,
-            VerificationReport,
-            verify_certificate_chain,
-        )
-
-        return {
-            "DeletionCertificate": DeletionCertificate,
-            "ForgetPolicy": ForgetPolicy,
-            "ForgettingVault": ForgettingVault,
-            "MemoryRecord": MemoryRecord,
-            "VerificationReport": VerificationReport,
-            "verify_certificate_chain": verify_certificate_chain,
         }[name]
     raise AttributeError(f"module 'mlx_plastic_rank' has no attribute '{name}'")

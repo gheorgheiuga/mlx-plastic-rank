@@ -22,7 +22,7 @@ from .gradient_agreement import (
 )
 from .learned_capacity_migration import _make_task, _score, _TaskBatch
 
-SPEC_PATH = Path(__file__).resolve().parents[3] / "codex/research/gradient-agreement/protocol.json"
+SPEC_PATH = Path(__file__).resolve().parents[1] / "codex/research/gradient-agreement/protocol.json"
 CONDITIONS = (
     "agreement", "static", "fixed_random", "exact_one_step", "gradient_energy",
     "wrong_task_agreement", "site_oracle", "future_fixed_split", "joint_capacity",

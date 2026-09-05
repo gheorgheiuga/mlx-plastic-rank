@@ -1,12 +1,12 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The entry points are `plastic_rank.py` (bounded factor lifecycle demo) and the `packs` CLI. Core modules live under `src/mlx_plastic_rank/`, particularly `lowrank.py`, `factorization.py` and `packs/`. Tests mirror features in `tests/`. Generated data and packs stay ignored. DSN-20260905-04 defines current scope; parked controllers remain for reproducibility, not as an active implementation backlog.
+The entry points are `plastic_rank.py` (bounded factor lifecycle demo) and the `packs` CLI. Core modules live under `src/mlx_plastic_rank/`, particularly `lowrank.py`, `factorization.py` and `packs/`. Repository-only experiments live in `research/`, outside the installed package. Tests mirror features in `tests/`. Generated data and packs stay ignored. DSN-20260905-04 defines current scope; parked controllers remain for reproducibility, not as an active implementation backlog.
 
 ## Build, Test, and Development Commands
 - Environment/install: `uv sync --locked` into the project-local `.venv`; no activation or global installs.
 - Demo: `uv run --locked python plastic_rank.py --steps 10` checks a conserved four-component prune/restore cycle.
-- Pack tools: `uv run --locked --extra packs packs …`; follow `codex/runbook.md` with an existing compatible checkpoint and disjoint training/held-out data. Start from fixed rank, and use `--initialization component-v1` for new allocation comparisons. `gram_energy` is the descriptive heuristic name; `theorem` is a legacy alias.
+- Pack tools: `uv run --locked --extra packs packs …`; follow `codex/runbook.md` with an existing compatible checkpoint and disjoint training/held-out data. Specify fixed rank, an explicit rank map, or a resume pack. `component-v1` is the initialization default; use `legacy` only for historical comparisons. Automatic rank policies and spectral-map discovery are repository-only research; `gram_energy` is a heuristic name and `theorem` a legacy Python alias.
 - Optional utilities: add `--extra compress` for checkpoint downloading/compression or `--extra data` for extractors using Hugging Face `datasets`.
 - Checks: `uv run --locked pytest -q`, `uv run --locked ruff check`, `uv run --locked mypy`. Default tests cover core, packs and utilities. Use `uv run --locked pytest -q tests/research` for parked research, or `uv run --locked pytest -q tests` for every suite. Include research checks when changing its code or shared mechanics it exercises.
 

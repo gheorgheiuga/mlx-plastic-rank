@@ -15,7 +15,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from .benchmark_artifacts import write_benchmark_artifacts
-from .manager import LoRAManager
+from .rank_manager import ResearchLoRAManager as LoRAManager
 
 CORE_CONDITIONS = (
     "guided_recycle",

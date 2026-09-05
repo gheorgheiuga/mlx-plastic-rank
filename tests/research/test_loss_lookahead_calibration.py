@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from mlx_plastic_rank.packs.loss_lookahead_calibration import (
+from research.loss_lookahead_calibration import (
     EVIDENCE_SEEDS,
     LookaheadCalibrationConfig,
     _spearman,

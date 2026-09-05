@@ -10,7 +10,6 @@ NO_NUMPY_IMPORTS = [
     "src/mlx_plastic_rank/lowrank.py",
     "src/mlx_plastic_rank/packs/rank_budget.py",
     "src/mlx_plastic_rank/packs/device_profiles.py",
-    "src/mlx_plastic_rank/packs/rank_map.py",
     "src/mlx_plastic_rank/packs/ablation.py",
     "src/mlx_plastic_rank/packs/rank_ledger.py",
     "src/mlx_plastic_rank/packs/train.py",
@@ -23,7 +22,6 @@ NO_NUMPY_IMPORTS = [
 ALLOWLISTED_NUMPY_IMPORTS = {
     "src/mlx_plastic_rank/packs/io.py": "safetensors.numpy pack file boundary",
     "src/mlx_plastic_rank/packs/manager.py": "safetensors.numpy pack export/import boundary",
-    "src/mlx_plastic_rank/pop_polynomial_probe.py": "offline legacy diagnostic with local migration TODO",
 }
 
 
@@ -64,7 +62,7 @@ def test_core_imports_do_not_load_optional_loaders_or_parked_experiments():
         [sys.executable, "-c", """
 import builtins
 import sys
-optional = {'datasets', 'sympy', 'mlx_lm', 'mlx_vlm', 'mlx_audio'}
+optional = {'datasets', 'sympy', 'mlx_lm', 'mlx_vlm', 'mlx_audio', 'research'}
 original_import = builtins.__import__
 def checked_import(name, *args, **kwargs):
     assert name.split('.')[0] not in optional, name
