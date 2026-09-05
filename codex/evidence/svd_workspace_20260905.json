@@ -1,0 +1,1262 @@
+{
+  "kind": "svd_workspace_comparison",
+  "date": "2026-09-05",
+  "evidence_status": "synthetic engineering benchmark; not model quality or whole-model device fit",
+  "baseline_commit": "1651a62c22c526427f0e890698dad912008f43be",
+  "updated_source_status": "working tree; exact source and generator hashes in each run",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "rank": 32,
+  "oversamples": 8,
+  "power_iterations": 1,
+  "method": "Each case and implementation ran in its own process on CPU. Summary values are medians of three seeds; memory is sampled before dense reconstruction.",
+  "limitations": [
+    "Process peak includes interpreter and imported libraries.",
+    "RSS high-water increase is a difference of process maxima, not an exact workspace measurement.",
+    "Elapsed times are local observations on small synthetic matrices, not a general speed guarantee.",
+    "No LLM checkpoint, training run, or research promotion is included."
+  ],
+  "cases": [
+    {
+      "label": "tall",
+      "shape": [
+        4096,
+        512
+      ],
+      "before": {
+        "process_peak_rss_bytes": 140165120,
+        "rss_high_water_increase_bytes": 74072064,
+        "mlx_peak_bytes": 80819024,
+        "seconds": 0.13392074999865144
+      },
+      "after": {
+        "process_peak_rss_bytes": 69746688,
+        "rss_high_water_increase_bytes": 4014080,
+        "mlx_peak_bytes": 11104688,
+        "seconds": 0.007305916980840266
+      },
+      "peak_rss_reduction_pct": 50.23962594973699,
+      "median_time_ratio_before_over_after": 18.330450558069302,
+      "max_absolute_reconstruction_error_difference": 2.384185791015625e-07
+    },
+    {
+      "label": "wide",
+      "shape": [
+        512,
+        4096
+      ],
+      "before": {
+        "process_peak_rss_bytes": 138805248,
+        "rss_high_water_increase_bytes": 72810496,
+        "mlx_peak_bytes": 79672168,
+        "seconds": 0.07601112499833107
+      },
+      "after": {
+        "process_peak_rss_bytes": 69910528,
+        "rss_high_water_increase_bytes": 4063232,
+        "mlx_peak_bytes": 10992976,
+        "seconds": 0.008221000025514513
+      },
+      "peak_rss_reduction_pct": 49.63408876298395,
+      "median_time_ratio_before_over_after": 9.24597065593293,
+      "max_absolute_reconstruction_error_difference": 1.7881393432617188e-07
+    },
+    {
+      "label": "square",
+      "shape": [
+        2048,
+        2048
+      ],
+      "before": {
+        "process_peak_rss_bytes": 122437632,
+        "rss_high_water_increase_bytes": 39780352,
+        "mlx_peak_bytes": 53621608,
+        "seconds": 0.055229749996215105
+      },
+      "after": {
+        "process_peak_rss_bytes": 86917120,
+        "rss_high_water_increase_bytes": 4521984,
+        "mlx_peak_bytes": 18428336,
+        "seconds": 0.008809791994281113
+      },
+      "peak_rss_reduction_pct": 29.011106650608852,
+      "median_time_ratio_before_over_after": 6.269132123898903,
+      "max_absolute_reconstruction_error_difference": 5.960464477539063e-08
+    }
+  ],
+  "runs": [
+    {
+      "case": "tall",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        4096,
+        512
+      ],
+      "rank": 32,
+      "seed": 42,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.13916520803468302,
+      "process_peak_rss_bytes": 141295616,
+      "rss_high_water_before_bytes": 67141632,
+      "rss_high_water_increase_bytes": 74153984,
+      "mlx_peak_bytes": 80819028,
+      "relative_frobenius_error": 0.9573931694030762,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            4096,
+            40
+          ],
+          "output_shapes": [
+            [
+              4096,
+              4096
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 67115424
+        },
+        {
+          "input_shape": [
+            40,
+            512
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              512,
+              512
+            ]
+          ],
+          "output_bytes": 1055136
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "7dfe62259bdc84ccfa807e776e4ad6a3b42b0f95bbf1bd2aa841b07d53ec2bea",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "tall",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        4096,
+        512
+      ],
+      "rank": 32,
+      "seed": 43,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.13340845803031698,
+      "process_peak_rss_bytes": 140165120,
+      "rss_high_water_before_bytes": 66125824,
+      "rss_high_water_increase_bytes": 74039296,
+      "mlx_peak_bytes": 80819024,
+      "relative_frobenius_error": 0.9575486183166504,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            4096,
+            40
+          ],
+          "output_shapes": [
+            [
+              4096,
+              4096
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 67115424
+        },
+        {
+          "input_shape": [
+            40,
+            512
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              512,
+              512
+            ]
+          ],
+          "output_bytes": 1055136
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "a2c55d069b2a98338e1a417a948151679e9abac368657cc1d3b972a2961e3633",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "tall",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        4096,
+        512
+      ],
+      "rank": 32,
+      "seed": 44,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.13392074999865144,
+      "process_peak_rss_bytes": 139984896,
+      "rss_high_water_before_bytes": 65912832,
+      "rss_high_water_increase_bytes": 74072064,
+      "mlx_peak_bytes": 80819024,
+      "relative_frobenius_error": 0.957069993019104,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            4096,
+            40
+          ],
+          "output_shapes": [
+            [
+              4096,
+              4096
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 67115424
+        },
+        {
+          "input_shape": [
+            40,
+            512
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              512,
+              512
+            ]
+          ],
+          "output_bytes": 1055136
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "b389adf33b3c7897c5fd57190c97b2fe2f59d975e5c0c4b81c7f354ee817da58",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "tall",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        4096,
+        512
+      ],
+      "rank": 32,
+      "seed": 42,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.007305916980840266,
+      "process_peak_rss_bytes": 69746688,
+      "rss_high_water_before_bytes": 65748992,
+      "rss_high_water_increase_bytes": 3997696,
+      "mlx_peak_bytes": 11104688,
+      "relative_frobenius_error": 0.9573930501937866,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "7dfe62259bdc84ccfa807e776e4ad6a3b42b0f95bbf1bd2aa841b07d53ec2bea",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "tall",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        4096,
+        512
+      ],
+      "rank": 32,
+      "seed": 43,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.007364208984654397,
+      "process_peak_rss_bytes": 70139904,
+      "rss_high_water_before_bytes": 66043904,
+      "rss_high_water_increase_bytes": 4096000,
+      "mlx_peak_bytes": 11104688,
+      "relative_frobenius_error": 0.9575487375259399,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "a2c55d069b2a98338e1a417a948151679e9abac368657cc1d3b972a2961e3633",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "tall",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        4096,
+        512
+      ],
+      "rank": 32,
+      "seed": 44,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.007056125032249838,
+      "process_peak_rss_bytes": 69697536,
+      "rss_high_water_before_bytes": 65683456,
+      "rss_high_water_increase_bytes": 4014080,
+      "mlx_peak_bytes": 11104688,
+      "relative_frobenius_error": 0.9570697546005249,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "b389adf33b3c7897c5fd57190c97b2fe2f59d975e5c0c4b81c7f354ee817da58",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "wide",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        512,
+        4096
+      ],
+      "rank": 32,
+      "seed": 42,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.0759019159595482,
+      "process_peak_rss_bytes": 138805248,
+      "rss_high_water_before_bytes": 65994752,
+      "rss_high_water_increase_bytes": 72810496,
+      "mlx_peak_bytes": 79672168,
+      "relative_frobenius_error": 0.9572461247444153,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            512,
+            40
+          ],
+          "output_shapes": [
+            [
+              512,
+              512
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 1055136
+        },
+        {
+          "input_shape": [
+            40,
+            4096
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              4096,
+              4096
+            ]
+          ],
+          "output_bytes": 67115424
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "7dfe62259bdc84ccfa807e776e4ad6a3b42b0f95bbf1bd2aa841b07d53ec2bea",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "wide",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        512,
+        4096
+      ],
+      "rank": 32,
+      "seed": 43,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.07680454204091802,
+      "process_peak_rss_bytes": 138641408,
+      "rss_high_water_before_bytes": 65880064,
+      "rss_high_water_increase_bytes": 72761344,
+      "mlx_peak_bytes": 79672168,
+      "relative_frobenius_error": 0.9575949907302856,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            512,
+            40
+          ],
+          "output_shapes": [
+            [
+              512,
+              512
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 1055136
+        },
+        {
+          "input_shape": [
+            40,
+            4096
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              4096,
+              4096
+            ]
+          ],
+          "output_bytes": 67115424
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "a2c55d069b2a98338e1a417a948151679e9abac368657cc1d3b972a2961e3633",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "wide",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        512,
+        4096
+      ],
+      "rank": 32,
+      "seed": 44,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.07601112499833107,
+      "process_peak_rss_bytes": 138854400,
+      "rss_high_water_before_bytes": 65896448,
+      "rss_high_water_increase_bytes": 72957952,
+      "mlx_peak_bytes": 79672168,
+      "relative_frobenius_error": 0.9570441246032715,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            512,
+            40
+          ],
+          "output_shapes": [
+            [
+              512,
+              512
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 1055136
+        },
+        {
+          "input_shape": [
+            40,
+            4096
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              4096,
+              4096
+            ]
+          ],
+          "output_bytes": 67115424
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "b389adf33b3c7897c5fd57190c97b2fe2f59d975e5c0c4b81c7f354ee817da58",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "wide",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        512,
+        4096
+      ],
+      "rank": 32,
+      "seed": 42,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.008131915994454175,
+      "process_peak_rss_bytes": 69615616,
+      "rss_high_water_before_bytes": 65617920,
+      "rss_high_water_increase_bytes": 3997696,
+      "mlx_peak_bytes": 10992976,
+      "relative_frobenius_error": 0.9572461843490601,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "7dfe62259bdc84ccfa807e776e4ad6a3b42b0f95bbf1bd2aa841b07d53ec2bea",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "wide",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        512,
+        4096
+      ],
+      "rank": 32,
+      "seed": 43,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.00846525002270937,
+      "process_peak_rss_bytes": 69910528,
+      "rss_high_water_before_bytes": 65748992,
+      "rss_high_water_increase_bytes": 4161536,
+      "mlx_peak_bytes": 10992976,
+      "relative_frobenius_error": 0.9575948119163513,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "a2c55d069b2a98338e1a417a948151679e9abac368657cc1d3b972a2961e3633",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "wide",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        512,
+        4096
+      ],
+      "rank": 32,
+      "seed": 44,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.008221000025514513,
+      "process_peak_rss_bytes": 70123520,
+      "rss_high_water_before_bytes": 66060288,
+      "rss_high_water_increase_bytes": 4063232,
+      "mlx_peak_bytes": 10992976,
+      "relative_frobenius_error": 0.957044243812561,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "b389adf33b3c7897c5fd57190c97b2fe2f59d975e5c0c4b81c7f354ee817da58",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "square",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        2048,
+        2048
+      ],
+      "rank": 32,
+      "seed": 42,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.055229749996215105,
+      "process_peak_rss_bytes": 121946112,
+      "rss_high_water_before_bytes": 82657280,
+      "rss_high_water_increase_bytes": 39288832,
+      "mlx_peak_bytes": 53621608,
+      "relative_frobenius_error": 0.977644145488739,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            2048,
+            40
+          ],
+          "output_shapes": [
+            [
+              2048,
+              2048
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 16783776
+        },
+        {
+          "input_shape": [
+            40,
+            2048
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              2048,
+              2048
+            ]
+          ],
+          "output_bytes": 16783776
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "f0ca1407067958e71e4d4ed92f817d615ec83cba61d749b878f1a2bfaf3c41ae",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "square",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        2048,
+        2048
+      ],
+      "rank": 32,
+      "seed": 43,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.05398629198316485,
+      "process_peak_rss_bytes": 122437632,
+      "rss_high_water_before_bytes": 82657280,
+      "rss_high_water_increase_bytes": 39780352,
+      "mlx_peak_bytes": 53621608,
+      "relative_frobenius_error": 0.9776422381401062,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            2048,
+            40
+          ],
+          "output_shapes": [
+            [
+              2048,
+              2048
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 16783776
+        },
+        {
+          "input_shape": [
+            40,
+            2048
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              2048,
+              2048
+            ]
+          ],
+          "output_bytes": 16783776
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "3d51d12d4ac9435b36cfa06e22ac55116035a050c1f1b069912417b003608252",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "square",
+      "implementation": "before",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        2048,
+        2048
+      ],
+      "rank": 32,
+      "seed": 44,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.05652595800347626,
+      "process_peak_rss_bytes": 122716160,
+      "rss_high_water_before_bytes": 82558976,
+      "rss_high_water_increase_bytes": 40157184,
+      "mlx_peak_bytes": 53621608,
+      "relative_frobenius_error": 0.9776753187179565,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            2048,
+            40
+          ],
+          "output_shapes": [
+            [
+              2048,
+              2048
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 16783776
+        },
+        {
+          "input_shape": [
+            40,
+            2048
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              2048,
+              2048
+            ]
+          ],
+          "output_bytes": 16783776
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "ac5d1988f030e8e54d856459320be40ad478735b5c52cbbb9a1a3cdb248c450b",
+        "implementation_file": "src/mlx_plastic_rank/lowrank.py",
+        "implementation_sha256": "36bd719c2794b8eefbc0079b0af046352d3f8fd437bad0310cefd2da74a7fef4",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "square",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        2048,
+        2048
+      ],
+      "rank": 32,
+      "seed": 42,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.009092374995816499,
+      "process_peak_rss_bytes": 86671360,
+      "rss_high_water_before_bytes": 82395136,
+      "rss_high_water_increase_bytes": 4276224,
+      "mlx_peak_bytes": 18428336,
+      "relative_frobenius_error": 0.9776442050933838,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "f0ca1407067958e71e4d4ed92f817d615ec83cba61d749b878f1a2bfaf3c41ae",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "square",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        2048,
+        2048
+      ],
+      "rank": 32,
+      "seed": 43,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.00813329202355817,
+      "process_peak_rss_bytes": 86917120,
+      "rss_high_water_before_bytes": 82395136,
+      "rss_high_water_increase_bytes": 4521984,
+      "mlx_peak_bytes": 18428336,
+      "relative_frobenius_error": 0.9776421785354614,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "3d51d12d4ac9435b36cfa06e22ac55116035a050c1f1b069912417b003608252",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    },
+    {
+      "case": "square",
+      "implementation": "after",
+      "kind": "synthetic_svd_workspace",
+      "version": 1,
+      "shape": [
+        2048,
+        2048
+      ],
+      "rank": 32,
+      "seed": 44,
+      "oversamples": 8,
+      "power_iterations": 1,
+      "projection_device": "cpu",
+      "seconds": 0.008809791994281113,
+      "process_peak_rss_bytes": 87408640,
+      "rss_high_water_before_bytes": 82345984,
+      "rss_high_water_increase_bytes": 5062656,
+      "mlx_peak_bytes": 18428336,
+      "relative_frobenius_error": 0.9776753187179565,
+      "svd_decompositions": [
+        {
+          "input_shape": [
+            40,
+            40
+          ],
+          "output_shapes": [
+            [
+              40,
+              40
+            ],
+            [
+              40
+            ],
+            [
+              40,
+              40
+            ]
+          ],
+          "output_bytes": 12960
+        }
+      ],
+      "provenance": {
+        "fixture": "locally generated Gaussian matrix; no external data or model",
+        "input_sha256": "ac5d1988f030e8e54d856459320be40ad478735b5c52cbbb9a1a3cdb248c450b",
+        "implementation_file": "src/mlx_plastic_rank/factorization.py",
+        "implementation_sha256": "54796e7c53f2e27911fb2218468dd89fac0b2bfb11df0eb1920b20904a5d6043",
+        "benchmark_sha256": "4e4fb0d30d12f6980f048ab1dc95cf5426ff6920cc71e3a8ba308fc515fc0152",
+        "uv_lock_sha256": "28398a20e08d7a6730d212e7f248f9aa3390cca4983db195629a25f7832d1d98",
+        "python": "3.13.14",
+        "mlx": "0.31.2",
+        "numpy": "2.3.3",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+      }
+    }
+  ]
+}

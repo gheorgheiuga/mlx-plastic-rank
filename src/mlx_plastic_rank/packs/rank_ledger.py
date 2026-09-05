@@ -15,6 +15,7 @@ from typing import Any
 import mlx.core as mx
 
 from .io import load_pack, load_pack_metadata
+from .provenance import pack_identity
 
 CPU_DEVICE = mx.Device(mx.cpu)
 
@@ -210,6 +211,7 @@ def _load_update_factors(
 def pack_rank_ledger(pack_dir: Path, rank_tol: float = 1e-5) -> dict[str, Any]:
     """Build a rank ledger for one pack."""
 
+    identity = pack_identity(pack_dir)
     metadata, updates = _load_update_factors(pack_dir)
     adapters: list[dict[str, Any]] = []
     by_target: dict[str, dict[str, Any]] = {}
@@ -287,6 +289,7 @@ def pack_rank_ledger(pack_dir: Path, rank_tol: float = 1e-5) -> dict[str, Any]:
         "rank_tol": rank_tol,
         "pack_dir": str(pack_dir),
         "metadata": metadata,
+        "provenance": {"pack": identity},
         "summary": summary,
         "by_target": sorted(by_target.values(), key=lambda row: row["target"]),
         "adapters": adapters,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -547,7 +548,10 @@ class LoRAManager:
         dropout: float = 0.0,
         allowed_ranks: tuple[int, ...] | None = None,
         initial_active_rank: int | None = None,
+        initialization: str = "legacy",
     ) -> Dict[str, SliceLoRA]:
+        if initialization not in {"legacy", "component-v1"}:
+            raise PackApplicationError(f"Unknown initialization protocol: {initialization}")
         self._ensure_wrapped()
         mx.random.seed(seed)
         adapters: Dict[str, SliceLoRA] = {}
@@ -608,7 +612,7 @@ class LoRAManager:
             local_rank = rank_map.get(target)
             if local_rank is None:
                 local_rank = _default_rank_for_target(spec, rank)
-            default_alpha = alpha if (spec.kind in {"q", "o"} and target not in alpha_map) else 2.0 * local_rank
+            default_alpha = alpha if (alpha == 0.0 or spec.kind in {"q", "o"}) else 2.0 * local_rank
             local_alpha = alpha_map.get(target, default_alpha)
             _validate_rank_alpha(target, local_rank, local_alpha)
             resolved_ranks[target] = local_rank
@@ -629,14 +633,26 @@ class LoRAManager:
                 start, end, input_dim, output_dim = _local_adapter_geometry(spec, wrapper)
                 adapter_key = self._adapter_key(idx, target)
                 local_rank = rank_map.get(adapter_key, resolved_ranks[target])
-                local_alpha = alpha_map.get(adapter_key, 2.0 * local_rank)
+                default_scale = resolved_alphas[target] / resolved_ranks[target]
+                local_alpha = alpha_map.get(adapter_key, default_scale * local_rank)
                 _validate_rank_alpha(adapter_key, local_rank, local_alpha)
                 if local_rank <= 0:
                     continue
                 A = mx.zeros((output_dim, local_rank), dtype=mx.float16)
-                B = mx.random.normal((local_rank, input_dim), dtype=mx.float32) * (
-                    1.0 / math.sqrt(max(input_dim, 1))
-                )
+                if initialization == "component-v1":
+                    # A stateless factor bank: a component's draw never depends
+                    # on the requested rank, target order, or other adapters.
+                    rows = []
+                    for component in range(local_rank):
+                        identity = f"component-v1:{seed}:{adapter_key}:{input_dim}:{component}"
+                        component_seed = int.from_bytes(hashlib.sha256(identity.encode()).digest()[:4], "big")
+                        rows.append(mx.random.normal(
+                            (1, input_dim), dtype=mx.float32, key=mx.random.key(component_seed),
+                        ))
+                    B = mx.concatenate(rows, axis=0)
+                else:
+                    B = mx.random.normal((local_rank, input_dim), dtype=mx.float32)
+                B = B * (1.0 / math.sqrt(max(input_dim, 1)))
                 B = B.astype(mx.float16)
                 adapter = SliceLoRA(
                     name=adapter_key,

@@ -1,4 +1,9 @@
-"""mlx_plastic_rank package core exports (lazy imported)."""
+"""Small, lazy low-rank API.
+
+Legacy manager, theorem-named and vault aliases remain explicitly importable
+for compatibility, but are excluded from the advertised core surface.
+See DSN-20260905-04 for the active prototype boundary.
+"""
 
 __all__ = [
     "stable_rank",
@@ -9,18 +14,10 @@ __all__ = [
     "quantize_factors",
     "dequantize_factors",
     "gram_energy_rank",
-    "theorem_guided_rank",
-    "PlasticityManager",
     "quantise",
     "dequantise",
     "set_seed",
     "get_logger",
-    "DeletionCertificate",
-    "ForgetPolicy",
-    "ForgettingVault",
-    "MemoryRecord",
-    "VerificationReport",
-    "verify_certificate_chain",
 ]
 
 

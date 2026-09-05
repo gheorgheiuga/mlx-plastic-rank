@@ -244,6 +244,15 @@ def compare_answer_mode_metrics(
 ) -> PairedPerplexityComparison:
     """Compare two answer-mode metric rows emitted by pack evaluation."""
 
+    if "provenance" in left or "provenance" in right:
+        left_provenance, right_provenance = left.get("provenance"), right.get("provenance")
+        if not isinstance(left_provenance, Mapping) or not isinstance(right_provenance, Mapping):
+            raise ValueError("Both paired reports must contain provenance")
+        if {k: v for k, v in left_provenance.items() if k != "pack"} != {
+            k: v for k, v in right_provenance.items() if k != "pack"
+        }:
+            raise ValueError("Paired report provenance differs: model, examples, or preprocessing do not match")
+
     return compare_paired_perplexity(
         _metric_sequence(left, "example_loss_sums"),
         _metric_sequence(left, "example_token_counts"),

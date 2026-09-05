@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .inspection import summarize_pack
 from .io import load_pack_metadata
+from .provenance import content_sha256, dataset_example_keys, pack_identity
 
 
 @dataclass(frozen=True)
@@ -39,11 +41,25 @@ def _load_json(path: Path) -> Any:
         raise ValueError(f"Proof input is invalid JSON: {path}: {exc}") from exc
 
 
-def _as_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+def _as_float(value: Any, default: float | None = None) -> float:
+    return _metric(default if value is None and default is not None else value, "report metric")
+
+
+def _metric(value: Any, name: str, minimum: float = 0.0, maximum: float = math.inf) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite numeric metric")
+    number = float(value)
+    if not math.isfinite(number) or not minimum <= number <= maximum:
+        raise ValueError(f"{name} must be finite and in [{minimum}, {maximum}]")
+    return number
+
+
+def _object(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _sha256(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
 
 def _load_eval_rows(path: Path) -> list[dict[str, Any]]:
@@ -64,8 +80,12 @@ def _find_eval_pair(rows: list[dict[str, Any]], pack_name: str) -> tuple[dict[st
         pack = row.get("pack")
         label = str(row.get("label") or "").lower()
         if pack in (None, "", "base") or label == "base":
+            if base_row is not None:
+                raise ValueError("Eval report contains multiple base rows.")
             base_row = row
         if pack == pack_name:
+            if pack_row is not None:
+                raise ValueError(f"Eval report contains multiple rows for pack {pack_name!r}.")
             pack_row = row
     if base_row is None:
         raise ValueError("Eval report does not contain a base row.")
@@ -83,17 +103,20 @@ def _generation_metrics(path: Path, pack_name: str) -> dict[str, Any]:
         raise ValueError(
             f"Generation report pack {summary.get('pack')!r} does not match requested pack {pack_name!r}."
         )
-    base_overlap = _as_float(summary.get("base_solution_keyword_overlap"))
-    pack_overlap = _as_float(summary.get("pack_solution_keyword_overlap"))
+    def rate(key: str) -> float:
+        return _metric(summary.get(key), key, 0.0, 1.0)
+
+    base_overlap = rate("base_solution_keyword_overlap")
+    pack_overlap = rate("pack_solution_keyword_overlap")
     return {
         "examples": int(_as_float(summary.get("examples"))),
         "base_solution_keyword_overlap": base_overlap,
         "pack_solution_keyword_overlap": pack_overlap,
         "solution_keyword_overlap_gain": pack_overlap - base_overlap,
-        "base_contains_brand_rate": _as_float(summary.get("base_contains_brand_rate")),
-        "pack_contains_brand_rate": _as_float(summary.get("pack_contains_brand_rate")),
-        "base_contains_code_rate": _as_float(summary.get("base_contains_code_rate")),
-        "pack_contains_code_rate": _as_float(summary.get("pack_contains_code_rate")),
+        "base_contains_brand_rate": rate("base_contains_brand_rate"),
+        "pack_contains_brand_rate": rate("pack_contains_brand_rate"),
+        "base_contains_code_rate": rate("base_contains_code_rate"),
+        "pack_contains_code_rate": rate("pack_contains_code_rate"),
     }
 
 
@@ -137,6 +160,26 @@ def build_domain_pack_proof(config: DomainPackProofConfig) -> dict[str, Any]:
 
     requirements: list[dict[str, Any]] = []
     metadata = load_pack_metadata(config.pack_dir / "meta.json")
+    training_provenance = _object(metadata.training_config.get("provenance"))
+    recorded_keys = training_provenance.get("training_example_keys")
+    lineage_complete = (
+        training_provenance.get("lineage_complete") is True
+        and isinstance(recorded_keys, list) and bool(recorded_keys)
+        and all(_sha256(key) for key in recorded_keys)
+    )
+    inherited_keys = set(recorded_keys) if lineage_complete and isinstance(recorded_keys, list) else set()
+    overlap = None
+    training_keys: set[str] = set()
+    if config.eval_data is not None and config.train_data.is_file() and config.eval_data.is_file():
+        training_keys = dataset_example_keys(config.train_data)
+        seen_keys = training_keys | inherited_keys
+        overlap = len(seen_keys & dataset_example_keys(config.eval_data))
+    requirements.append(_requirement(
+        "held_out_dataset", overlap == 0 and lineage_complete,
+        "Evaluation data is supplied and has no exact examples from the recorded training lineage.",
+        {"overlapping_examples": overlap, "lineage_complete": lineage_complete,
+         "scope": "exact content only; not semantic or pretraining overlap"},
+    ))
     _, _, _, total_bytes, non_lora = summarize_pack(config.pack_dir)
     pack_file = config.pack_dir / "pack.safetensors"
     train_exists = config.train_data.exists()
@@ -178,6 +221,38 @@ def build_domain_pack_proof(config: DomainPackProofConfig) -> dict[str, Any]:
 
     rows = _load_eval_rows(config.eval_report)
     base_row, pack_row = _find_eval_pair(rows, config.pack)
+    base_provenance = _object(base_row.get("provenance"))
+    pack_provenance = _object(pack_row.get("provenance"))
+    current_pack = pack_identity(config.pack_dir)
+    train_sha = content_sha256(config.train_data) if config.train_data.is_file() else None
+    eval_sha = content_sha256(config.eval_data) if config.eval_data and config.eval_data.is_file() else None
+    model_sha = base_provenance.get("model_sha256")
+    tokenizer_sha = base_provenance.get("tokenizer_sha256")
+    settings = _object(base_provenance.get("settings"))
+    same_evaluation = {
+        key: value for key, value in base_provenance.items() if key != "pack"
+    } == {key: value for key, value in pack_provenance.items() if key != "pack"}
+    provenance_ok = (
+        base_provenance.get("version") == 1
+        and same_evaluation
+        and _sha256(model_sha) and _sha256(tokenizer_sha)
+        and _sha256(base_provenance.get("tokenized_sha256"))
+        and {"loader", "loss_mode", "chat_template", "sequence_length", "num_samples"} <= settings.keys()
+        and settings.get("loss_mode") in {"answer", "full"}
+        and base_provenance.get("pack") is None
+        and pack_provenance.get("pack") == current_pack
+        and eval_sha is not None and base_provenance.get("dataset_sha256") == eval_sha
+        and train_sha is not None and training_provenance.get("dataset_sha256") == train_sha
+        and lineage_complete and training_keys <= inherited_keys
+        and training_provenance.get("model_sha256") == model_sha
+        and training_provenance.get("tokenizer_sha256") == tokenizer_sha
+    )
+    requirements.append(_requirement(
+        "artifact_provenance", provenance_ok,
+        "Training and paired evaluation are bound to the current data, pack, checkpoint, tokenizer, and preprocessing.",
+        {"pack": current_pack, "train_sha256": train_sha, "eval_sha256": eval_sha,
+         "model_sha256": model_sha, "same_evaluation": same_evaluation},
+    ))
     base_model_matches = base_row.get("model") == config.base_model and pack_row.get("model") == config.base_model
     if config.eval_data is not None:
         eval_data_known = bool(eval_exists)
@@ -199,13 +274,13 @@ def build_domain_pack_proof(config: DomainPackProofConfig) -> dict[str, Any]:
         )
     )
 
-    base_ppl = _as_float(base_row.get("perplexity", base_row.get("ppl")))
-    pack_ppl = _as_float(pack_row.get("perplexity", pack_row.get("ppl")))
+    base_ppl = _metric(base_row.get("perplexity", base_row.get("ppl")), "base perplexity", 1.0)
+    pack_ppl = _metric(pack_row.get("perplexity", pack_row.get("ppl")), "pack perplexity", 1.0)
     ppl_improvement_pct = ((base_ppl - pack_ppl) / base_ppl) * 100.0 if base_ppl > 0 else 0.0
-    base_acc = _as_float(base_row.get("token_accuracy", base_row.get("domain_metric")))
-    pack_acc = _as_float(pack_row.get("token_accuracy", pack_row.get("domain_metric")))
+    base_acc = _metric(base_row.get("token_accuracy", base_row.get("domain_metric")), "base token accuracy", 0.0, 1.0)
+    pack_acc = _metric(pack_row.get("token_accuracy", pack_row.get("domain_metric")), "pack token accuracy", 0.0, 1.0)
     token_accuracy_gain = pack_acc - base_acc
-    max_logit_diff = _as_float(pack_row.get("max_logit_diff"))
+    max_logit_diff = _metric(pack_row.get("max_logit_diff"), "max logit difference")
     attach_passed = (
         pack_row.get("pack") == config.pack
         and _as_float(pack_row.get("pack_size_bytes", total_bytes)) > 0
@@ -246,10 +321,15 @@ def build_domain_pack_proof(config: DomainPackProofConfig) -> dict[str, Any]:
     generation: dict[str, Any] | None = None
     if config.generation_report is not None:
         generation = _generation_metrics(config.generation_report, config.pack)
+        generation_provenance = _object(_load_json(config.generation_report).get("provenance"))
         requirements.append(
             _requirement(
                 "generation_response_improves",
-                generation["solution_keyword_overlap_gain"] >= config.min_generation_overlap_gain,
+                generation["examples"] > 0
+                and generation["solution_keyword_overlap_gain"] >= config.min_generation_overlap_gain
+                and generation_provenance.get("pack") == current_pack
+                and generation_provenance.get("model_sha256") == model_sha
+                and generation_provenance.get("dataset_sha256") == eval_sha,
                 "Base+pack improves generated answer keyword overlap on sampled domain prompts.",
                 {
                     "generation_report": str(config.generation_report),
@@ -271,10 +351,12 @@ def build_domain_pack_proof(config: DomainPackProofConfig) -> dict[str, Any]:
     ledger: dict[str, Any] | None = None
     if config.ledger_report is not None:
         ledger = _ledger_metrics(config.ledger_report, config.pack)
+        ledger_provenance = _object(_load_json(config.ledger_report).get("provenance"))
         requirements.append(
             _requirement(
                 "rank_ledger_valid",
-                ledger["adapter_count"] > 0 and ledger["effective_rank"] > 0,
+                ledger["adapter_count"] > 0 and ledger["effective_rank"] > 0
+                and ledger_provenance.get("pack") == current_pack,
                 "Rank ledger verifies the attached pack has active low-rank adapter capacity.",
                 {
                     "ledger_report": str(config.ledger_report),

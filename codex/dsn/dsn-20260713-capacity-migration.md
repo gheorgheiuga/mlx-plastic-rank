@@ -103,12 +103,12 @@ The planned implementation surface is:
   experiment and trajectory report;
 - `scripts/capacity_migration_benchmark.py` for the reproducible command-line
   run; and
-- `tests/test_capacity_migration.py` for budget and control invariants.
+- `tests/research/test_capacity_migration.py` for budget and control invariants.
 
 The learned bridge subsequently added
 `src/mlx_plastic_rank/packs/learned_capacity_migration.py`,
 `scripts/learned_capacity_migration_benchmark.py`, and
-`tests/test_learned_capacity_migration.py`. It uses a frozen input-derived dense
+`tests/research/test_learned_capacity_migration.py`. It uses a frozen input-derived dense
 router, real-loss shadow swaps, transactional strict recycling, and separate
 active/physical/master ledgers plus a provisional A-column dormant-state ledger.
 

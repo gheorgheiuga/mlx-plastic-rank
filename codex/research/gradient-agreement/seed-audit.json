@@ -1,0 +1,537 @@
+{
+  "scope": [
+    "out/capacity_migration",
+    "codex/evidence"
+  ],
+  "seed_keys": [
+    "confirmatory_seeds",
+    "development_seeds",
+    "evidence_seeds",
+    "fixture_seed",
+    "fixture_seeds",
+    "seed",
+    "seeds"
+  ],
+  "files": [
+    {
+      "path": "out/capacity_migration/learned_mlx_dense_seed1_10/summary.json",
+      "sha256": "9c93a8fe3ed1969ce93eff1d8461abef091dbed406dbd8e491446735d51b49ff",
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        73271,
+        73272,
+        73273,
+        73274
+      ]
+    },
+    {
+      "path": "out/capacity_migration/learned_mlx_dense_seed1_10/trajectory.jsonl",
+      "sha256": "9a2bc1b6f97289ca4dcc987dbbe89787fd630f942edfc3ce26dd29bf11263832",
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/evidence/protocol.json",
+      "sha256": "1da6f108c5d056aceb367bf23eca36c85fb96a14d6a87ce547bdb1d608f430ab",
+      "seeds": [
+        0,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/evidence/provenance.json",
+      "sha256": "cf8223c1370127d550516143c54904115515fe69c8acd4e786e138471cdb3984",
+      "seeds": []
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/evidence/raw_results.jsonl",
+      "sha256": "48b6940ce108013c00715e004de320326b2c14a865ad02dda0f6b1fb2ea453f5",
+      "seeds": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/evidence/summary.json",
+      "sha256": "516eeac789536510b8101566907c744ff0c2dd81401c0160d583291da491664e",
+      "seeds": [
+        0,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/repeat_seed0/protocol.json",
+      "sha256": "f055599eafd145740f06b0744b8fd8e45a00e820090082e5826c44ee679f0154",
+      "seeds": [
+        0,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/repeat_seed0/provenance.json",
+      "sha256": "2634c436dd38382a60d4c9367e5bb9782590ae57f8a10e8553f3ab689f58a537",
+      "seeds": []
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/repeat_seed0/raw_results.jsonl",
+      "sha256": "4bbc4f58831c6bd06d11bd8cad517cf75119569ef4c6b85f8c76cf5b2b8c41c1",
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/repeat_seed0/summary.json",
+      "sha256": "79697a5408dd2afbc78c3c94d72ddcd6f928886992fef72db2e976197689ef50",
+      "seeds": [
+        0,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/smoke/protocol.json",
+      "sha256": "f055599eafd145740f06b0744b8fd8e45a00e820090082e5826c44ee679f0154",
+      "seeds": [
+        0,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/smoke/provenance.json",
+      "sha256": "8da630e3aa16c762d8b9434cd0d559fcc7990031b1ec0f754263cf87651d58dd",
+      "seeds": []
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/smoke/raw_results.jsonl",
+      "sha256": "4bbc4f58831c6bd06d11bd8cad517cf75119569ef4c6b85f8c76cf5b2b8c41c1",
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "path": "out/capacity_migration/loss_lookahead_calibration_v1/smoke/summary.json",
+      "sha256": "79697a5408dd2afbc78c3c94d72ddcd6f928886992fef72db2e976197689ef50",
+      "seeds": [
+        0,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/evidence/protocol.json",
+      "sha256": "feb216aea34f4ff956f841e299cc506860a69a458a39f2ec13aea86aed62b8a2",
+      "seeds": [
+        0,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/evidence/provenance.json",
+      "sha256": "befa955cef47a70db753be26ff40341aa35a5dd20577dd795b602b423491f8bb",
+      "seeds": []
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/evidence/summary.json",
+      "sha256": "b983ee537d3e9f4fab0e1f09dc90590b19af728a6b74f4eef004c17b0762aebf",
+      "seeds": [
+        0,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/evidence/trajectory.jsonl",
+      "sha256": "2e7242c4d2815a9ddf7f2ed62f8ace47149042d94b3f1a4b0707ddce291a00ca",
+      "seeds": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/repeat_seed0/protocol.json",
+      "sha256": "1082ee7857496905ba3b13df51f26f4365ee5f9d5b8dafedb7f53cda2c0c3b9f",
+      "seeds": [
+        0,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/repeat_seed0/provenance.json",
+      "sha256": "7eac4f8769954bb13aa066dfac103638745dde4ecd5a0bdfcc79c32fe8558cf3",
+      "seeds": []
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/repeat_seed0/summary.json",
+      "sha256": "d1694a215ea34540d31d07f5bb16a07ba9b3c78598dddf234a326912b6213399",
+      "seeds": [
+        0,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/repeat_seed0/trajectory.jsonl",
+      "sha256": "a1dabcd9b6bb813394fda15d1a82a8fe84434e93a73a7db777bcf2092d5696d0",
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/smoke/protocol.json",
+      "sha256": "1082ee7857496905ba3b13df51f26f4365ee5f9d5b8dafedb7f53cda2c0c3b9f",
+      "seeds": [
+        0,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/smoke/provenance.json",
+      "sha256": "5291961a3f6d8d0c083ccb814ee32edbe2b1fb7ad25278ac0630f7d74bf76862",
+      "seeds": []
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/smoke/summary.json",
+      "sha256": "d1694a215ea34540d31d07f5bb16a07ba9b3c78598dddf234a326912b6213399",
+      "seeds": [
+        0,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "path": "out/capacity_migration/multibatch_controller_v2/smoke/trajectory.jsonl",
+      "sha256": "a1dabcd9b6bb813394fda15d1a82a8fe84434e93a73a7db777bcf2092d5696d0",
+      "seeds": [
+        0
+      ]
+    },
+    {
+      "path": "out/capacity_migration/reference_seed0_9/summary.json",
+      "sha256": "aa442e503bfff03a251ddfad0b8f36a815671881b0a6d01ce1a188699487a022",
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78
+      ]
+    },
+    {
+      "path": "out/capacity_migration/reference_seed0_9/trajectory.jsonl",
+      "sha256": "69d16f5f1f7f10e7aaef530122cbb47966402a06e4dfddf6a839d39e3e94abc1",
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "path": "codex/evidence/capacity_migration_learned_dense_seed1_10.json",
+      "sha256": "e569fe7499d8e91ad942ac62c4080c82741f7ffb36e7da89811fc23964749120",
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "path": "codex/evidence/capacity_migration_reference_seed0_9.json",
+      "sha256": "aa442e503bfff03a251ddfad0b8f36a815671881b0a6d01ce1a188699487a022",
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78
+      ]
+    },
+    {
+      "path": "codex/evidence/loss_lookahead_calibration_seed11_20.json",
+      "sha256": "788c3059bc9429b966b67c106bfe46daad346315ed5ead0f3232b433af5b31b6",
+      "seeds": [
+        0,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "path": "codex/evidence/multibatch_controller_v2_seed21_30.json",
+      "sha256": "56f0a0b00096ccab31b17681c3539d14a2655416c610a64c235e0d2eb045ebcf",
+      "seeds": [
+        0,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30
+      ]
+    }
+  ],
+  "errors": [],
+  "observed_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    73271,
+    73272,
+    73273,
+    73274
+  ],
+  "generated_utc": "2026-09-05T01:19:50.128164+00:00",
+  "artifact_kind": "bounded_local_seed_inventory_not_experiment_results",
+  "method": "Recursively parse JSON and nonblank JSONL lines; collect integer values or list members under seed_keys anywhere in each document. Includes nested statistical seed fields. Hash source bytes using SHA-256.",
+  "evidence_filename_prefixes": [
+    "capacity_migration_",
+    "loss_lookahead_calibration_",
+    "multibatch_controller_"
+  ],
+  "scope_limitations": "Only listed local paths and integer seed fields. No audit of other machines, deleted outputs, other directories, unrecorded runs, free-text seed declarations or future runs. Absence is not global proof of untouched tasks.",
+  "reserved_evidence_seeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120
+  ],
+  "reserved_intersection": [],
+  "recheck_required_before_freeze": true
+}

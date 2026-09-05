@@ -9,6 +9,15 @@
 
 ---
 
+## Validation correction — 2026-09-05
+
+The original gate admitted missing metrics and did not bind report contents to
+the current datasets, checkpoint, tokenizer or pack. Historical passes below
+refer to that original implementation. They cannot establish a current proof
+without producer-captured provenance. The replacement checks and their limited
+engineering evidence are recorded in DSN-20260905-01 and ADR-0012; no historical
+result was retroactively certified or rewritten.
+
 ## Context
 - The project now has enough pieces to show the core product loop: keep a base model immutable, train a LoRA skill pack from domain data, attach it as a small DLC-style artifact, and evaluate base+pack against the base on held-out domain prompts.
 - Existing evidence was scattered across eval JSON, generation JSON, rank-ledger JSON, pack metadata, README tables, and local commands.
@@ -36,9 +45,9 @@
   - `src/mlx_plastic_rank/packs/cli.py` (`packs proof`)
   - `src/mlx_plastic_rank/packs/io.py` pack metadata training provenance fields for newly created packs.
 - Tests:
-  - `tests/test_domain_pack_proof.py`
-  - `tests/test_packs_cli_parser.py`
-  - `tests/test_pack_inspection.py`
+  - `tests/packs/test_domain_pack_proof.py`
+  - `tests/packs/test_packs_cli_parser.py`
+  - `tests/packs/test_pack_inspection.py`
 - Local proof artifact:
   - `out/fault_codes_domain_pack_proof_spectral_key_candidate.json`
 - Local proof result for `spectral-key-candidate`:

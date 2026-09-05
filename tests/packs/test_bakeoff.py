@@ -1,15 +1,40 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from mlx_plastic_rank.packs.bakeoff import (
     BakeoffError,
+    BakeoffPhase,
     build_bakeoff_plan,
     build_bakeoff_summary,
     validate_bakeoff_spec,
     write_bakeoff_summary,
 )
+
+
+def test_phase_reuse_requires_matching_inputs_and_complete_outputs(tmp_path: Path):
+    source = tmp_path / "data.jsonl"
+    source.write_text("original input")
+    output = tmp_path / "result.json"
+    output.write_text("original result")
+    phase = BakeoffPhase(
+        candidate_id="test", phase="eval", command=("test", "--steps", "10"),
+        log_path=tmp_path / "eval.log", skip_path=output,
+        input_paths=(source,),
+    )
+    assert not phase.should_skip(force=False)
+    phase.record_completion()
+    assert phase.should_skip(force=False)
+    assert not replace(phase, command=("test", "--steps", "11")).should_skip(force=False)
+    source.write_text("changed input")
+    assert not phase.should_skip(force=False)
+    source.write_text("original input")
+    output.write_text("changed result")
+    assert not phase.should_skip(force=False)
+    output.unlink()
+    assert not phase.should_skip(force=False)
 
 
 def _write_json(path: Path, payload):
@@ -118,6 +143,38 @@ def test_bakeoff_parser_rejects_missing_data(tmp_path: Path):
 
     with pytest.raises(BakeoffError, match="train_data"):
         validate_bakeoff_spec(payload, root=tmp_path)
+
+
+def test_bakeoff_resolves_local_base_from_project_root(tmp_path: Path):
+    payload = _base_payload(tmp_path)
+    checkpoint = tmp_path / "local-model"
+    checkpoint.mkdir()
+    (checkpoint / "config.json").write_text("{}")
+    payload["base"] = "local-model"
+
+    spec = validate_bakeoff_spec(payload, root=tmp_path)
+
+    assert spec.base == str(checkpoint.resolve())
+
+
+def test_completion_requires_identifiable_checkpoint(tmp_path: Path, monkeypatch):
+    import sys
+    import types
+
+    hub = types.ModuleType("huggingface_hub")
+    monkeypatch.setattr(hub, "try_to_load_from_cache", lambda *args: None, raising=False)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    output = tmp_path / "result.json"
+    output.write_text("{}")
+    phase = BakeoffPhase(
+        candidate_id="test", phase="eval", command=("test",),
+        log_path=tmp_path / "eval.log", skip_path=output,
+        base_reference="uncached-model",
+    )
+
+    with pytest.raises(BakeoffError, match="checkpoint"):
+        phase.record_completion()
+    assert not phase.should_skip(force=False)
 
 
 def test_bakeoff_parser_rejects_duplicate_candidate_ids(tmp_path: Path):
@@ -230,6 +287,11 @@ def test_bakeoff_plan_generates_resumable_control_maps_before_training(tmp_path:
     assert rank_map_phase.should_skip(force=False) is False
     assert len(rank_map_phase.additional_skip_paths) == 1
     rank_map_phase.additional_skip_paths[0].write_text("{}", encoding="utf-8")
+    assert rank_map_phase.should_skip(force=False) is False
+    for path in rank_map_phase.input_paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("source content", encoding="utf-8")
+    rank_map_phase.record_completion()
     assert rank_map_phase.should_skip(force=False) is True
     assert rank_map_phase.should_skip(force=True) is False
 
@@ -286,7 +348,9 @@ def test_bakeoff_summary_computes_winners_and_promotion_gate(tmp_path: Path):
 
     assert summary["winner_quality"] == "fixed_r32"
     assert summary["winner_tradeoff"] == "hetero_map"
-    assert summary["promotion_gates"]["passed"] is True
+    # Numerical summaries remain readable, but old/unbound files cannot promote.
+    assert summary["artifact_provenance_verified"] is False
+    assert summary["promotion_gates"]["passed"] is False
     assert (spec.output_dir / "demo-bakeoff_summary.json").exists()
     assert (spec.output_dir / "demo-bakeoff_summary.csv").exists()
 

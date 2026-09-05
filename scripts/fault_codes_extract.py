@@ -47,7 +47,15 @@ def fetch_rows_from_datasets(
     *,
     source_limit: int | None,
 ) -> list[dict[str, Any]]:
-    from datasets import load_dataset
+    try:
+        from datasets import load_dataset
+    except ModuleNotFoundError as exc:
+        if exc.name != "datasets":
+            raise
+        raise RuntimeError(
+            "The datasets loader needs the data extra. Run: "
+            "uv run --locked --extra data python scripts/fault_codes_extract.py ..."
+        ) from exc
 
     loaded = load_dataset(dataset, config, split=split)
     rows: list[dict[str, Any]] = []

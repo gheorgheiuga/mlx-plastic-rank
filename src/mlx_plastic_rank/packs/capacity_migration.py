@@ -101,7 +101,7 @@ class Student:
         self.site_count = site_count
         self.task_rank = task_rank
         self.weights = [[0.0] * task_rank for _ in range(site_count)]
-        self.active = [set() for _ in range(site_count)]
+        self.active: list[set[int]] = [set() for _ in range(site_count)]
         self.vault: dict[tuple[int, int], float] = {}
 
     def activate_site(self, site: int) -> None:

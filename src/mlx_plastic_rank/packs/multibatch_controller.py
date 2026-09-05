@@ -316,6 +316,7 @@ def _run_condition(
     rows: list[dict[str, Any]] = []
     actual_events: list[dict[str, Any]] = []
     total_virtual_gradients = 0
+    proposal: dict[str, Any] | None
     for step in range(controller_protocol.b_steps):
         event = None
         selection = None

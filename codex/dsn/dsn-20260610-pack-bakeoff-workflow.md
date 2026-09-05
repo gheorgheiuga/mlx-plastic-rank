@@ -9,6 +9,16 @@
 
 ---
 
+## Validation correction — 2026-09-05
+
+The original resume check used file existence, which could reuse stale or
+incomplete artifacts. Reuse and promotion now require content-bound completion
+receipts. The earlier paired comparisons also shared a seed without matching
+shared initial factor rows across ranks. Their stored measurements remain
+historical diagnostic evidence with this confound. DSN-20260905-01 and ADR-0012
+record the new checks and initialization protocol; no large-model rerun or new
+quality claim was made in this hardening pass.
+
 ## Context
 - The project has separate commands for training packs, evaluating base+pack,
   measuring rank ledgers, and proving artifact-backed domain improvement.
@@ -55,9 +65,9 @@
   - `codex/evidence/text_to_sql_fullscale_summary.json`
   - `codex/evidence/text_to_sql_paired_transfer_screen_seed42.json`
 - Tests:
-  - `tests/test_bakeoff.py`
-  - `tests/test_text_to_sql_extract.py`
-  - `tests/test_packs_cli_parser.py`
+  - `tests/packs/test_bakeoff.py`
+  - `tests/tools/test_text_to_sql_extract.py`
+  - `tests/packs/test_packs_cli_parser.py`
 
 ## Consequences
 - The repo now has a repeatable productization path for comparing fixed-rank,

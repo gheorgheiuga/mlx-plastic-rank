@@ -69,6 +69,15 @@ def test_answer_mode_wrapper_reads_per_example_artifact_fields():
     assert result.probability_left_better == 1.0
 
 
+def test_paired_reports_reject_different_examples_even_when_lengths_match():
+    left = {"example_loss_sums": [1.], "example_token_counts": [2],
+            "provenance": {"tokenized_sha256": "a" * 64}}
+    right = {"example_loss_sums": [2.], "example_token_counts": [2],
+             "provenance": {"tokenized_sha256": "b" * 64}}
+    with pytest.raises(ValueError, match="provenance"):
+        compare_answer_mode_metrics(left, right, resamples=20)
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [

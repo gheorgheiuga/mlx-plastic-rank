@@ -2,6 +2,10 @@
 
 The local-device memory profiles define repeatable memory gates for PopRank experiments on Apple Silicon style local machines. They are separate from pack rank profiles such as `lite` and `heavy`.
 
+For measured matrix-factorization workspace and its limits, see
+[compact SVD](svd_factorization.md). Its synthetic process measurements do not
+replace the whole-model ledger below.
+
 ## Profiles
 
 The built-in profiles are:

@@ -195,6 +195,9 @@ def _alpha_zero_noop(model, targets):
         baseline.append(out)
 
     manager.initialize_adapters(targets=targets, rank=4, alpha=0.0, seed=0)
+    # Nonzero factors ensure this tests alpha, rather than zero initialization.
+    for _, adapter in manager.iter_adapters():
+        adapter.A = mx.ones_like(adapter.A)
 
     wrapped_outputs = []
     for block in blocks:
@@ -212,6 +215,22 @@ def _alpha_zero_noop(model, targets):
 def test_fused_attention_alpha_zero_is_noop():
     model = FusedModel(hidden=8)
     _alpha_zero_noop(model, ["attn.q_proj", "attn.k_proj", "attn.v_proj"])
+
+
+def test_matched_initialization_preserves_shared_components_across_rank_maps():
+    first = LoRAManager(SeparateModel(layers=2, hidden=8))
+    second = LoRAManager(SeparateModel(layers=2, hidden=8))
+    small = first.initialize_adapters(
+        ["attn.q_proj", "attn.k_proj"], rank=4, alpha=8., seed=42,
+        initialization="component-v1",
+    )
+    large = second.initialize_adapters(
+        ["attn.k_proj", "attn.q_proj"], rank=8, alpha=16., seed=42,
+        initialization="component-v1",
+    )
+    for name, adapter in small.items():
+        assert mx.array_equal(adapter.B, large[name].B[:adapter.rank]).item()
+    assert not mx.array_equal(small["blocks.0.attn.q_proj"].B, small["blocks.1.attn.q_proj"].B).item()
 
 
 def test_separate_attention_alpha_zero_is_noop():

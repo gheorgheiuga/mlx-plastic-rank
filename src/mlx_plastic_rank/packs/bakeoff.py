@@ -13,10 +13,11 @@ import math
 import shlex
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 
+from .provenance import content_sha256, digest_json
 from .statistics import compare_answer_mode_metrics
 
 VALID_CANDIDATE_MODES = {
@@ -59,6 +60,7 @@ class BakeoffSpec:
     output_dir: Path
     layers: str
     profile: str
+    root: Path = field(default_factory=Path.cwd)
     train: Mapping[str, Any] = field(default_factory=dict)
     eval: Mapping[str, Any] = field(default_factory=dict)
     proof: Mapping[str, Any] = field(default_factory=dict)
@@ -80,12 +82,73 @@ class BakeoffPhase:
     skip_path: Path | None = None
     additional_skip_paths: tuple[Path, ...] = ()
     output_path: Path | None = None
+    input_paths: tuple[Path, ...] = ()
+    base_reference: str | None = None
+
+    @property
+    def receipt_path(self) -> Path:
+        return self.log_path.with_suffix(".receipt.json")
+
+    def _outputs(self) -> tuple[Path, ...]:
+        return tuple(path for path in (self.skip_path, *self.additional_skip_paths) if path is not None)
+
+    def _input_fingerprint(self) -> str:
+        source_root = Path(__file__).resolve().parents[1]
+        source_identity = {
+            str(path.relative_to(source_root)): content_sha256(path)
+            for path in sorted(source_root.rglob("*.py"))
+        }
+        project_root = source_root.parent.parent
+        for name in ("pyproject.toml", "uv.lock"):
+            path = project_root / name
+            if path.is_file():
+                source_identity[name] = content_sha256(path)
+        model_path = Path(self.base_reference).expanduser() if self.base_reference else None
+        if self.base_reference and model_path is not None and not model_path.exists():
+            from huggingface_hub import try_to_load_from_cache
+
+            cached = try_to_load_from_cache(self.base_reference, "config.json")
+            model_path = Path(cached).parent if isinstance(cached, str) else None
+        if self.base_reference and model_path is None:
+            raise BakeoffError(f"Cannot identify checkpoint for {self.base_reference}")
+        return digest_json({
+            "command": [part for part in self.command if part != "--force"],
+            "implementation": source_identity,
+            "inputs": {str(path): content_sha256(path) if path.exists() else None for path in self.input_paths},
+            "model_reference": self.base_reference,
+            "model_sha256": content_sha256(model_path) if model_path is not None else None,
+        })
+
+    def record_completion(self) -> None:
+        """Record a receipt only after every declared output has been produced."""
+        outputs = self._outputs()
+        if not outputs or not all(path.is_file() for path in outputs):
+            raise BakeoffError(f"Incomplete outputs for {self.candidate_id} {self.phase}")
+        if not all(path.is_file() for path in self.input_paths):
+            raise BakeoffError(f"Missing inputs for {self.candidate_id} {self.phase}")
+        receipt = {
+            "version": 1, "inputs": self._input_fingerprint(),
+            "outputs": {str(path): content_sha256(path) for path in outputs},
+        }
+        self.receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.receipt_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(receipt, sort_keys=True, indent=2), encoding="utf-8")
+        temporary.replace(self.receipt_path)
 
     def should_skip(self, *, force: bool) -> bool:
-        required = tuple(
-            path for path in (self.skip_path, *self.additional_skip_paths) if path is not None
-        )
-        return not force and bool(required) and all(path.exists() for path in required)
+        if force:
+            return False
+        try:
+            receipt = json.loads(self.receipt_path.read_text(encoding="utf-8"))
+            outputs = self._outputs()
+            return (
+                receipt.get("version") == 1
+                and bool(outputs) and all(path.is_file() for path in outputs)
+                and receipt.get("inputs") == self._input_fingerprint()
+                and receipt.get("outputs") == {str(path): content_sha256(path) for path in outputs}
+            )
+        except (OSError, ValueError, AttributeError):
+            return False
 
 
 def load_bakeoff_spec(path: Path, *, root: Path | None = None) -> BakeoffSpec:
@@ -105,7 +168,7 @@ def validate_bakeoff_spec(payload: Any, *, root: Path | None = None) -> BakeoffS
 
     if not isinstance(payload, Mapping):
         raise BakeoffError("Bakeoff spec must be a JSON object.")
-    root_path = root or Path.cwd()
+    root_path = (root or Path.cwd()).resolve()
 
     def required_text(key: str) -> str:
         value = payload.get(key)
@@ -154,16 +217,21 @@ def validate_bakeoff_spec(payload: Any, *, root: Path | None = None) -> BakeoffS
         candidates.append(candidate)
 
     metadata = optional_mapping("metadata")
+    base = required_text("base")
+    local_base = _spec_path(base, root_path)
+    if local_base.exists():
+        base = str(local_base.resolve())
     return BakeoffSpec(
         name=required_text("name"),
         domain=required_text("domain"),
-        base=required_text("base"),
+        base=base,
         loader=str(payload.get("loader", "auto")),
         train_data=train_data,
         eval_data=eval_data,
         output_dir=_spec_path(required_text("output_dir"), root_path),
         layers=str(payload.get("layers", "attn.q_proj,attn.k_proj,attn.v_proj")),
         profile=str(payload.get("profile", "lite")),
+        root=root_path.resolve(),
         train=optional_mapping("train"),
         eval=optional_mapping("eval"),
         proof=optional_mapping("proof"),
@@ -197,7 +265,8 @@ def build_bakeoff_plan(spec: BakeoffSpec, *, force: bool = False) -> list[Bakeof
                 phase="create",
                 command=tuple(_create_command(spec, candidate, force=force)),
                 log_path=phase_paths["create_log"],
-                skip_path=Path("packs") / candidate.pack / "meta.json",
+                skip_path=spec.root / "packs" / candidate.pack / "meta.json",
+                additional_skip_paths=(spec.root / "packs" / candidate.pack / "pack.safetensors",),
             )
         )
         phases.append(
@@ -230,7 +299,42 @@ def build_bakeoff_plan(spec: BakeoffSpec, *, force: bool = False) -> list[Bakeof
                 output_path=phase_paths["proof_json"],
             )
         )
-    return phases
+    return [_bind_phase_inputs(spec, phase) for phase in phases]
+
+
+def _bind_phase_inputs(spec: BakeoffSpec, phase: BakeoffPhase) -> BakeoffPhase:
+    candidate = spec.candidates_by_id[phase.candidate_id]
+    inputs: list[Path] = []
+
+    def add_pack(reference: str) -> None:
+        location = _spec_path(reference, spec.root)
+        if not location.is_dir():
+            location = spec.root / "packs" / reference
+        inputs.extend([location / "meta.json", location / "pack.safetensors"])
+
+    paths = _candidate_paths(spec, candidate)
+    if phase.phase != "create" and phase.phase != "rank-map":
+        add_pack(candidate.pack)
+    if phase.phase == "create":
+        inputs.append(spec.train_data)
+        for flag in ("--rank-map-json", "--batch-schedule"):
+            if flag in phase.command:
+                inputs.append(_spec_path(phase.command[phase.command.index(flag) + 1], spec.root))
+        for flag in ("--rank-map-from-pack", "--resume-pack"):
+            if flag in phase.command:
+                add_pack(phase.command[phase.command.index(flag) + 1])
+    elif phase.phase == "rank-map":
+        add_pack(_control_source_pack(spec, candidate))
+    elif phase.phase == "eval":
+        inputs.append(spec.eval_data)
+    elif phase.phase == "proof":
+        inputs.extend([spec.train_data, spec.eval_data, paths["eval_json"], paths["ledger_json"]])
+        if "generation_report" in candidate.raw:
+            inputs.append(_spec_path(str(candidate.raw["generation_report"]), spec.root))
+    return replace(
+        phase, input_paths=tuple(inputs),
+        base_reference=spec.base if phase.phase in {"create", "eval"} else None,
+    )
 
 
 def bakeoff_plan_payload(spec: BakeoffSpec, *, force: bool = False) -> dict[str, Any]:
@@ -265,13 +369,18 @@ def bakeoff_plan_payload(spec: BakeoffSpec, *, force: bool = False) -> dict[str,
 def run_bakeoff(spec: BakeoffSpec, *, force: bool = False, cwd: Path | None = None) -> dict[str, Any]:
     """Execute a bakeoff spec and write compact summary artifacts."""
 
-    working_dir = cwd or Path.cwd()
+    working_dir = cwd or spec.root
     spec.output_dir.mkdir(parents=True, exist_ok=True)
     for phase in build_bakeoff_plan(spec, force=force):
         phase.log_path.parent.mkdir(parents=True, exist_ok=True)
         if phase.should_skip(force=force):
             print(f"Skipping {phase.candidate_id} {phase.phase}; found {phase.skip_path}")
             continue
+        if not force and any(path.exists() for path in phase._outputs()):
+            raise BakeoffError(
+                f"Stale or unverified artifacts for {phase.candidate_id} {phase.phase}; "
+                "use new pack/output names to preserve them, or --force to regenerate."
+            )
         print(f"Running {phase.candidate_id} {phase.phase}: {shlex.join(phase.command)}")
         with phase.log_path.open("w", encoding="utf-8") as handle:
             handle.write(f"$ {shlex.join(phase.command)}\n\n")
@@ -288,6 +397,7 @@ def run_bakeoff(spec: BakeoffSpec, *, force: bool = False, cwd: Path | None = No
                 f"Bakeoff phase failed: candidate={phase.candidate_id} "
                 f"phase={phase.phase} exit={result.returncode}; see {phase.log_path}"
             )
+        phase.record_completion()
 
     summary = build_bakeoff_summary(spec)
     write_bakeoff_summary(spec, summary)
@@ -331,8 +441,15 @@ def build_bakeoff_summary(spec: BakeoffSpec) -> dict[str, Any]:
     if base_metrics is None:
         raise BakeoffError("Cannot build bakeoff summary without candidate eval artifacts.")
 
+    verified = all(phase.should_skip(force=False) for phase in build_bakeoff_plan(spec))
+    promotion = _promotion_gate_summary(spec, base_metrics, rows, paired_eval_rows=paired_eval_rows)
+    if promotion is not None:
+        promotion["artifact_provenance_verified"] = verified
+        promotion["passed"] = bool(promotion["passed"] and verified)
+
     return {
         "kind": "pack_bakeoff_summary",
+        "artifact_provenance_verified": verified,
         "name": spec.name,
         "domain": spec.domain,
         "base_model": spec.base,
@@ -345,12 +462,7 @@ def build_bakeoff_summary(spec: BakeoffSpec) -> dict[str, Any]:
         "rows": rows,
         "winner_quality": _winner_quality(rows),
         "winner_tradeoff": _winner_tradeoff(rows),
-        "promotion_gates": _promotion_gate_summary(
-            spec,
-            base_metrics,
-            rows,
-            paired_eval_rows=paired_eval_rows,
-        ),
+        "promotion_gates": promotion,
     }
 
 
@@ -437,6 +549,7 @@ def _create_command(spec: BakeoffSpec, candidate: BakeoffCandidate, *, force: bo
     if bool(_setting(raw, train, "chat_template", False)):
         command.append("--chat-template")
     _append_option(command, "--batch-seed", _setting(raw, train, "batch_seed", None))
+    _append_option(command, "--initialization", _setting(raw, train, "initialization", "legacy"))
     _append_option(command, "--training-seed", _setting(raw, train, "training_seed", None))
     _append_option(command, "--batch-schedule", _setting(raw, train, "batch_schedule", None))
     if bool(_setting(raw, train, "train_fp16_fallback", False)):

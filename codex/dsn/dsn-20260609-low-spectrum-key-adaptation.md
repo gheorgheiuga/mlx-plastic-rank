@@ -3,11 +3,21 @@
 **ID:** DSN-20260609-03  
 **Title:** Test low-spectrum key-projection adaptation  
 **Date:** 2026-06-09  
-**Status:** Accepted as local experimental direction  
-**Evidence Status:** Quality verified on fault-code eval/generation; broader validation experimental  
+**Status:** Parked Experimental; historical local observations retained
+
+**Evidence Status:** Recorded fault-code metrics; causal placement benefit unvalidated due to initialization/provenance limits
 **Related Research Inbox Entry:** Pop matrix-polynomial rank identity; spectral LoRA rank allocation
 
 ---
+
+## Scope update — 2026-09-05
+
+DSN-20260905-04 parks further selector work. The historical comparisons below
+used shared seeds without matching factors across rank shapes/target order, and
+predate current artifact binding. They do not establish causal placement or a
+theorem advantage. Resume only under a separate matched-initialization,
+same-budget, training-seed protocol after the active baseline question is
+resolved. ADR-0007 and the DSN log carry this qualification.
 
 ## Context
 - The Pop/Negrescu theorem gives exact rank accounting for matrix polynomials, but it does not by itself identify which LoRA subspaces improve downstream quality.

@@ -13,6 +13,11 @@ from typing import Any, Iterable
 import mlx.core as mx
 
 from mlx_plastic_rank.packs.manager import LoRAManager
+from mlx_plastic_rank.packs.provenance import (
+    content_sha256,
+    pack_identity,
+    resolve_model_checkpoint,
+)
 
 WORD_RE = re.compile(r"[a-z0-9]+")
 STOPWORDS = {
@@ -66,7 +71,9 @@ def render_chat_prompt(processor: Any, prompt: str) -> str:
 def load_vlm(base: str):
     from mlx_vlm.utils import load
 
-    loaded = load(base)
+    checkpoint = resolve_model_checkpoint(base)
+    loaded = load(str(checkpoint))
+    loaded[1]._poprank_checkpoint = str(checkpoint)
     return loaded[0], loaded[1]
 
 
@@ -193,8 +200,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    dataset_sha = content_sha256(args.eval_data)
     examples = load_examples(args.eval_data, limit=args.limit, offset=args.offset)
     model, processor = load_vlm(args.base)
+    model_sha = content_sha256(Path(processor._poprank_checkpoint))
+    attached_identity = None
     rows: list[dict[str, Any]] = []
 
     mx.reset_peak_memory()
@@ -224,6 +234,7 @@ def main() -> None:
 
     pack_metadata = None
     if args.pack:
+        attached_identity = pack_identity(args.pack_root / args.pack)
         manager = LoRAManager(model, base_model=args.base)
         pack_metadata = manager.apply_pack(args.pack_root / args.pack).pack_name
         for row, example in zip(rows, examples):
@@ -252,7 +263,16 @@ def main() -> None:
     }
     if args.pack:
         summary.update(summarize(rows, "pack"))
-    write_outputs({"summary": summary, "rows": rows}, args.out, args.csv)
+    write_outputs({
+        "summary": summary, "rows": rows,
+        "provenance": {
+            "model_sha256": model_sha,
+            "dataset_sha256": dataset_sha,
+            "pack": attached_identity,
+            "settings": {"max_tokens": args.max_tokens, "temperature": args.temperature,
+                         "chat_template": args.chat_template, "limit": args.limit, "offset": args.offset},
+        },
+    }, args.out, args.csv)
     print(json.dumps(summary, indent=2))
 
 

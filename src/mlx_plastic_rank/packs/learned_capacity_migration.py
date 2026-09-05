@@ -9,7 +9,7 @@ import random
 import types
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -525,7 +525,7 @@ def _commit_recycled_transfer(
 
     recipient_column = base_params[recipient_a_index][:, recipient_component]
     mx.eval(recipient_column)
-    if not bool(mx.all(recipient_column == 0.0).item()):
+    if not bool(mx.all(mx.equal(recipient_column, 0.0)).item()):
         raise RuntimeError("strict recycle cannot activate a learned inactive recipient")
 
     try:
@@ -564,9 +564,9 @@ def _commit_recycled_transfer(
         released_a_column = updated[donor_a_index][:, donor_component]
         released_b_row = updated[donor_b_index][donor_component, :]
         mx.eval(released_a_column, released_b_row, row)
-        released_a_column_zero = bool(mx.all(released_a_column == 0.0).item())
+        released_a_column_zero = bool(mx.all(mx.equal(released_a_column, 0.0)).item())
         released_b_row_matches_deterministic_replacement = bool(
-            mx.all(released_b_row == row).item()
+            mx.array_equal(released_b_row, row).item()
         )
         recycled_slot_reset_verified = (
             released_a_column_zero
@@ -575,7 +575,7 @@ def _commit_recycled_transfer(
         if not recycled_slot_reset_verified:
             raise RuntimeError("strict recycle did not reset the released factor slot")
         non_donor_master_parameters_exact = all(
-            bool(mx.all(before == after).item())
+            bool(mx.array_equal(before, after).item())
             for index, (before, after) in enumerate(zip(base_params, updated, strict=True))
             if index not in {donor_a_index, donor_b_index}
         )
@@ -939,6 +939,7 @@ def _run_condition(
             elif oracle_opportunity:
                 event = _oracle_proposal(manager, task, protocol)
             elif random_opportunity:
+                assert replay is not None
                 replay_event = replay[global_step]
                 guided_donor = (
                     replay_event["donor"],
@@ -1084,7 +1085,7 @@ def _run_condition(
     route_minima = [float(mx.min(routes).item()) for routes in route_arrays]
     route_maxima = [float(mx.max(routes).item()) for routes in route_arrays]
     route_design_ranks = [
-        _numeric_rank(routes.tolist()) for routes in route_arrays
+        _numeric_rank(cast(list[list[float]], routes.tolist())) for routes in route_arrays
     ]
     return trajectory, {
         "seed": seed,
@@ -1131,8 +1132,8 @@ def _run_condition(
             "route_minimum": min(route_minima),
             "route_maximum": max(route_maxima),
             "minimum_route_design_rank": min(route_design_ranks),
-            "task_a_transform_rank": _numeric_rank(task_a.transform.tolist()),
-            "task_b_transform_rank": _numeric_rank(task_b.transform.tolist()),
+            "task_a_transform_rank": _numeric_rank(cast(list[list[float]], task_a.transform.tolist())),
+            "task_b_transform_rank": _numeric_rank(cast(list[list[float]], task_b.transform.tolist())),
             "task_a_output_head": list(task_a.output_head),
             "task_b_output_head": list(task_b.output_head),
             "joint_sufficient_analytic_max_abs_error": _joint_analytic_error(

@@ -3,6 +3,18 @@
 `data/` is ignored by Git except for this README. Use it for local generated
 training and evaluation JSONL files, not for checked-in datasets.
 
+Dataset downloads are optional. Extractors using Hugging Face `datasets` need
+the `data` extra on each invocation, for example:
+
+```sh
+uv run --locked --extra data python scripts/text_to_sql_extract.py --help
+uv run --locked --extra data python scripts/fault_codes_extract.py --help
+```
+
+The fault-code dataset-viewer path uses the standard library and does not need
+that extra. Local JSONL pack loading and the default lifecycle demo do not
+require `datasets`. Keep training and held-out files separate.
+
 Before publishing or sharing generated data:
 
 - Keep `source_dataset`, `source_dataset_url`, and license fields from the

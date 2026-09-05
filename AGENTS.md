@@ -1,24 +1,23 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-Entry points live at `main.py` (CLI banner) and `plastic_rank.py` (demo loop combining `RankLayer`, `PlasticBlock`, and `PlasticityManager`). Core modules extend under `src/mlx_plastic_rank/`—notably `lowrank.py`, `plasticity_manager.py`, and the `packs/` toolkit. Tests mirror features in `tests/` (for example `tests/test_rank_layer.py`, `tests/test_manager_adapters.py`). Support assets reside in `data/` (sample corpora), `packs/` (generated skill packs; ignored in git), and `scripts/` (benchmarks, CLI helpers).
+The entry points are `plastic_rank.py` (bounded factor lifecycle demo) and the `packs` CLI. Core modules live under `src/mlx_plastic_rank/`, particularly `lowrank.py`, `factorization.py` and `packs/`. Tests mirror features in `tests/`. Generated data and packs stay ignored. DSN-20260905-04 defines current scope; parked controllers remain for reproducibility, not as an active implementation backlog.
 
 ## Build, Test, and Development Commands
-- Environment (optional): `uv venv` then `source .venv/bin/activate`; otherwise call `uv run …`.
-- Install project: `uv pip install -e .`; enable compression extras with `uv pip install -e '.[compress]'`; install pack extras with `uv pip install -e '.[packs]'`.
-- Core demos: `uv run python main.py` (banner) and `uv run python plastic_rank.py --steps 10` (rank/sleep telemetry).
-- LoRA CLI: `uv run packs create --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --loader auto --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-strategy theorem --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl`, then `uv run packs apply --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --dry-run`, and `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`.
-- Quantized training stays on the 4-bit base; k/v slices down-rank automatically. Use `--train-fp16-fallback` if a projection trips geometry checks.
-- Tests: `uv run pytest -q` or target rank logic with `uv run pytest -q -k rank_layer`.
+- Environment/install: `uv sync --locked` into the project-local `.venv`; no activation or global installs.
+- Demo: `uv run --locked python plastic_rank.py --steps 10` checks a conserved four-component prune/restore cycle.
+- Pack tools: `uv run --locked --extra packs packs …`; follow `codex/runbook.md` with an existing compatible checkpoint and disjoint training/held-out data. Start from fixed rank, and use `--initialization component-v1` for new allocation comparisons. `gram_energy` is the descriptive heuristic name; `theorem` is a legacy alias.
+- Optional utilities: add `--extra compress` for checkpoint downloading/compression or `--extra data` for extractors using Hugging Face `datasets`.
+- Checks: `uv run --locked pytest -q`, `uv run --locked ruff check`, `uv run --locked mypy`. Default tests cover core, packs and utilities. Use `uv run --locked pytest -q tests/research` for parked research, or `uv run --locked pytest -q tests` for every suite. Include research checks when changing its code or shared mechanics it exercises.
 
 ## Coding Style & Naming Conventions
 Use Python 3.13 with 4-space indentation and UTF-8 files. Apply snake_case to functions, variables, and modules; reserve PascalCase for classes. Structure imports standard → third-party → local and remove unused lines. Public APIs should include concise docstrings plus pragmatic type hints. No autoformatter is enforced—avoid style-only churn in diffs.
 
 ## Testing Guidelines
-- Pytest drives the suite; place cases in `tests/test_*.py` with functions `test_*`. Fix MLX seeds when asserting numeric tolerances, especially around pruning/waking flows. Run `uv run pytest -q` before pushing; capture failure logs for new adapters or CLI paths. Consider adding focused tests (`-k rank_layer`, `-k manager_adapters`) when modifying rank heuristics or pack wiring. Zero-impact tests on quantized adapters (alpha=0) must continue to pass within `1e-6`.
+- Pytest drives the suites under `tests/core`, `tests/packs`, `tests/tools` and `tests/research`. Place tests by behavior; use parameterized cases instead of repeated setup. Fix MLX seeds for numeric assertions, especially pruning/waking. Run the default checks before review. All suites must work without downloaded checkpoints or optional dataset/model loaders. Zero-impact tests on quantized adapters (alpha=0) must continue to pass within `1e-6`.
 
 ## Commit & Pull Request Guidelines
-Write imperative, scoped commit messages (e.g. `feat(rank): add prune threshold`, `fix(packs): guard alpha mismatch`). PRs should describe intent, link issues, and include before/after logs or CSV excerpts for demos. Verify `uv run python plastic_rank.py` and `uv run pytest -q` succeed prior to review. Keep changes focused; document trade-offs or research context in `codex/dsn/` and reference them from the PR.
+Write imperative, scoped commit messages (e.g. `feat(rank): add prune threshold`, `fix(packs): guard alpha mismatch`). PRs should describe the resulting behavior and relevant validation. Verify the locked demo, tests and static checks before review. Keep changes focused and reference design trade-offs from `codex/dsn/`.
 
 ## Research & Decision Records
 Treat `codex/decisions.md` as the canonical decision index. When adding or changing a DSN in `codex/dsn/`, update `codex/dsn/dsn-log.md` and either add a matching entry in `codex/decisions.md` or keep the DSN status as `Proposed`/`Experimental`. Do not mark a DSN `Accepted` when it only proves scaffolding, mechanics, or a hypothesis; record the evidence status separately and name the validation or falsification test that would promote it. For Pop Rank/theorem work, distinguish implementation instrumentation from proof of quality benefit, and keep unresolved validation gaps visible in the decision record.

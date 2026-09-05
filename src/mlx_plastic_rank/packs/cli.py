@@ -47,6 +47,14 @@ from .inspection import TensorInfo, allowed_ranks_for, size_limit_for, summarize
 from .io import compute_sha256, load_pack_metadata, save_pack, save_pack_metadata
 from .manager import LoRAManager, PackApplicationError
 from .proof import DomainPackProofConfig, build_domain_pack_proof
+from .provenance import (
+    content_sha256,
+    dataset_example_keys,
+    pack_identity,
+    resolve_model_checkpoint,
+    tokenized_sha256,
+    tokenizer_sha256,
+)
 from .rank_budget import (
     RankBudgetError,
     adapter_shapes_from_pack,
@@ -80,59 +88,45 @@ LORA_ALIAS_MAP = {
     "o": "attn.o_proj",
 }
 
-_eval_ppl: Any
-_load_data: Any
-_load_model: Any
-_load_vlm_model: Any
-
-try:
-    from mlx_lm.perplexity import eval_ppl as _eval_ppl_import
-    from mlx_lm.perplexity import load_data as _load_data_import
-    from mlx_lm.utils import load as _load_model_import
-
-    _eval_ppl = _eval_ppl_import
-    _load_data = _load_data_import
-    _load_model = _load_model_import
-except ModuleNotFoundError:
-    _eval_ppl = None
-    _load_data = None
-    _load_model = None
-
-try:
-    from mlx_vlm.utils import load as _load_vlm_model_import
-
-    _load_vlm_model = _load_vlm_model_import
-except ModuleNotFoundError:
-    _load_vlm_model = None
-
-
 def _resolve_target(name: str) -> str:
     canonical = name.strip()
     return LORA_ALIAS_MAP.get(canonical, canonical)
 
 
 def _require_mlx_lm():
-    if _load_model is None or _eval_ppl is None or _load_data is None:
+    try:
+        from mlx_lm.perplexity import eval_ppl, load_data
+    except ModuleNotFoundError as exc:
+        if exc.name != "mlx_lm":
+            raise
         raise SystemExit(
-            "The packs CLI requires `mlx-lm`. Install it with: uv pip install -e '.[packs]'"
-        )
-    return _load_model, _eval_ppl, _load_data
+            "Model evaluation needs mlx-lm. Rerun with: uv run --locked --extra packs packs …"
+        ) from exc
+    return _require_load_model(), eval_ppl, load_data
 
 
 def _require_load_model():
-    if _load_model is None:
+    try:
+        from mlx_lm.utils import load
+    except ModuleNotFoundError as exc:
+        if exc.name != "mlx_lm":
+            raise
         raise SystemExit(
-            "The packs CLI requires `mlx-lm`. Install it with: uv pip install -e '.[packs]'"
-        )
-    return _load_model
+            "Model loading needs mlx-lm. Rerun with: uv run --locked --extra packs packs …"
+        ) from exc
+    return load
 
 
 def _require_mlx_vlm():
-    if _load_vlm_model is None:
+    try:
+        from mlx_vlm.utils import load
+    except ModuleNotFoundError as exc:
+        if exc.name != "mlx_vlm":
+            raise
         raise SystemExit(
-            "Gemma 4 any-to-any bases require `mlx-vlm`. Install it with: uv pip install -e '.[packs]'"
-        )
-    return _load_vlm_model
+            "This model loader needs mlx-vlm. Rerun with: uv run --locked --extra packs packs …"
+        ) from exc
+    return load
 
 
 def _looks_like_vlm_ref(base_ref: str) -> bool:
@@ -150,14 +144,20 @@ def _tokenizer_from_processor(processor: Any):
 
 
 def _load_base_model(base_ref: str, loader: str = "auto"):
+    checkpoint = resolve_model_checkpoint(base_ref)
     if loader == "mlx-vlm" or (loader == "auto" and _looks_like_vlm_ref(base_ref)):
         load_vlm = _require_mlx_vlm()
-        loaded = load_vlm(base_ref)
+        loaded = load_vlm(str(checkpoint))
         model, processor = loaded[0], loaded[1]
-        return model, _tokenizer_from_processor(processor)
-    load_model = _require_load_model()
-    loaded = load_model(base_ref)
-    return loaded[0], loaded[1]
+        tokenizer = _tokenizer_from_processor(processor)
+    else:
+        load_model = _require_load_model()
+        loaded = load_model(str(checkpoint))
+        model, tokenizer = loaded[0], loaded[1]
+    # Keep the resolved immutable snapshot with the returned tokenizer so
+    # callers identify what was actually loaded, rather than a moving HF ref.
+    tokenizer._poprank_checkpoint = str(checkpoint)
+    return model, tokenizer
 
 
 def _dequantize_linear_inplace(module: nn.Module) -> int:
@@ -451,6 +451,18 @@ def cmd_create(args: argparse.Namespace) -> None:
 
     print(f"Loading base model from {base_ref}...")
     model, tokenizer = _load_base_model(base_ref, args.loader)
+    loaded_checkpoint = getattr(tokenizer, "_poprank_checkpoint", None)
+    training_keys = dataset_example_keys(Path(args.data))
+    training_provenance: dict[str, Any] = {
+        "version": 1,
+        "model_sha256": content_sha256(Path(loaded_checkpoint)) if loaded_checkpoint else None,
+        "tokenizer_sha256": tokenizer_sha256(tokenizer),
+        "dataset_sha256": content_sha256(Path(args.data)),
+        "lineage_complete": True,
+        "training_example_keys": sorted(training_keys),
+        "base_checkpoint": loaded_checkpoint,
+        "train_fp16_fallback": bool(getattr(args, "train_fp16_fallback", False)),
+    }
     if getattr(args, "train_fp16_fallback", False):
         converted = _dequantize_linear_inplace(model)
         if converted:
@@ -477,6 +489,22 @@ def cmd_create(args: argparse.Namespace) -> None:
         if not resume_dir.exists():
             raise SystemExit(f"Resume pack '{args.resume_pack}' not found at {resume_dir}")
         metadata = manager.apply_pack(resume_dir)
+        parent_provenance = metadata.training_config.get("provenance", {})
+        if not isinstance(parent_provenance, dict):
+            parent_provenance = {}
+        parent_keys = parent_provenance.get("training_example_keys")
+        complete_parent = (
+            isinstance(parent_keys, list) and all(isinstance(key, str) for key in parent_keys)
+            and parent_provenance.get("lineage_complete") is True
+            and parent_provenance.get("model_sha256") == training_provenance["model_sha256"]
+            and parent_provenance.get("tokenizer_sha256") == training_provenance["tokenizer_sha256"]
+        )
+        training_provenance["lineage_complete"] = complete_parent
+        if complete_parent and isinstance(parent_keys, list):
+            training_provenance["training_example_keys"] = sorted(
+                training_keys | set(parent_keys)
+            )
+        training_provenance["parent_pack"] = pack_identity(resume_dir)
         print(
             "Resuming frozen-rank pack "
             f"{metadata.pack_name}: adapters={len(metadata.rank_map)} "
@@ -559,6 +587,7 @@ def cmd_create(args: argparse.Namespace) -> None:
             dropout=args.lora_dropout,
             allowed_ranks=allowed_ranks,
             initial_active_rank=args.dynamic_initial_rank if args.dynamic_rank else None,
+            initialization=args.initialization,
         )
         if args.zero_init:
             for adapter in adapters.values():
@@ -630,6 +659,7 @@ def cmd_create(args: argparse.Namespace) -> None:
     )
     metadata.training_data = str(data_path)
     metadata.training_config = {
+        "provenance": training_provenance,
         "loss_mode": args.loss_mode,
         "chat_template": bool(args.chat_template),
         "steps": int(args.steps),
@@ -637,6 +667,7 @@ def cmd_create(args: argparse.Namespace) -> None:
         "learning_rate": float(args.learning_rate),
         "sequence_length": int(args.sequence_length),
         "seed": int(args.seed),
+        "initialization": args.initialization if not args.resume_pack else "resumed",
         "batch_seed": batch_seed,
         "training_seed": training_seed,
         "batch_schedule": str(args.batch_schedule) if args.batch_schedule else None,
@@ -1400,12 +1431,26 @@ def cmd_eval(args: argparse.Namespace) -> None:
     dataset_coverage_cached: SupervisedDatasetCoverage | None = None
     dataset_type: str | None = None
     base_logits_sample: mx.array | None = None
+    evaluated_model_sha: str | None = None
+    evaluated_checkpoint: str | None = None
+    evaluated_dataset_sha: str | None = None
 
     def evaluate(model_ref: str, pack_dir: Path | None = None) -> dict:
         nonlocal dataset_cached, dataset_coverage_cached, dataset_type, base_logits_sample
+        nonlocal evaluated_model_sha, evaluated_checkpoint, evaluated_dataset_sha
         start_load = time.time()
         base_checkpoint = _resolve_base_checkpoint(model_ref)
-        model, tokenizer = _load_base_model(model_ref, args.loader)
+        actual_loader = args.loader
+        if actual_loader == "auto" and _looks_like_vlm_ref(model_ref):
+            actual_loader = "mlx-vlm"
+        model, tokenizer = _load_base_model(evaluated_checkpoint or model_ref, actual_loader)
+        checkpoint = getattr(tokenizer, "_poprank_checkpoint", None)
+        model_sha = content_sha256(Path(checkpoint)) if checkpoint else None
+        if evaluated_model_sha is not None and model_sha != evaluated_model_sha:
+            raise ValueError("Base checkpoint changed between paired evaluations")
+        evaluated_model_sha = model_sha
+        evaluated_checkpoint = checkpoint
+        attached_identity = pack_identity(pack_dir) if pack_dir is not None else None
         manager = LoRAManager(model, base_checkpoint=base_checkpoint, base_model=model_ref)
         pack_name = None
         pack_size = 0
@@ -1420,6 +1465,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
         if dataset_cached is None:
             path_obj = Path(data_path)
             if path_obj.exists() and path_obj.is_file():
+                evaluated_dataset_sha = content_sha256(path_obj)
                 if args.loss_mode == "answer":
                     tokens, masks, dataset_coverage_cached = build_supervised_token_dataset_with_coverage(
                         path_obj,
@@ -1493,6 +1539,17 @@ def cmd_eval(args: argparse.Namespace) -> None:
                 token_accuracy = correct / float(total)
 
         result = {
+            "provenance": {
+                "version": 1,
+                "model_sha256": model_sha,
+                "tokenizer_sha256": tokenizer_sha256(tokenizer),
+                "dataset_sha256": evaluated_dataset_sha,
+                "tokenized_sha256": tokenized_sha256(*(cached_dataset if isinstance(cached_dataset, tuple) else (cached_dataset,))),
+                "pack": attached_identity,
+                "settings": {"loader": actual_loader, "loss_mode": args.loss_mode,
+                             "chat_template": bool(args.chat_template), "sequence_length": args.sequence_length,
+                             "num_samples": args.num_samples},
+            },
             "model": model_ref,
             "pack": pack_name,
             "pack_size_bytes": pack_size,
@@ -1539,6 +1596,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
     if args.csv:
         csv_path = Path(args.csv)
         json_only_fields = {
+            "provenance",
             "example_loss_sums",
             "example_token_counts",
             "example_correct_counts",
@@ -1811,6 +1869,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--batch-seed",
         type=int,
         help="Seed for the isolated minibatch schedule; defaults to --seed.",
+    )
+    create.add_argument(
+        "--initialization", choices=("legacy", "component-v1"), default="legacy",
+        help="Use component-v1 for factors matched across ranks and target order; legacy reproduces older runs.",
     )
     create.add_argument(
         "--training-seed",

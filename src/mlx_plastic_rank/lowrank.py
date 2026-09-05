@@ -1,194 +1,35 @@
-"""Low-rank layers and SVD-based approximations.
+"""Reversible low-rank layers and factor quantization.
 
-This module provides two SVD paths for top-``r`` approximations:
-
-- Direct SVD via ``mx.linalg.svd`` (good for small to medium matrices).
-- Randomized SVD (rSVD) that bounds working memory and plays nicer with
-  MLX streams by reducing the size of the expensive SVD to a skinny matrix.
-
-The selection is automatic in :func:`factorized_lowrank` based on a size
-threshold. All heavy linear-algebra ops run inside a CPU stream context
-when available to avoid large Metal allocations on macOS GPUs.
+Matrix factorization functions are re-exported for compatibility. Their
+implementation lives in :mod:`mlx_plastic_rank.factorization`.
 """
 from __future__ import annotations
 
 import math
-from contextlib import nullcontext
 from typing import Any, Dict, List, Tuple, cast
 
 import mlx.core as mx
 import mlx.nn as nn
 
+from .factorization import (
+    factorized_lowrank as factorized_lowrank,
+)
+from .factorization import (
+    randomized_svd as randomized_svd,
+)
+from .factorization import (
+    svd_lowrank as svd_lowrank,
+)
+from .factorization import (
+    svd_lowrank_randomized as svd_lowrank_randomized,
+)
 from .utils import dequantise, quantise
-
-
-def _cpu_stream():
-    """Return a CPU stream context if MLX exposes streams; else no-op.
-
-    In MLX, streams are context managers (constructors like ``mx.array`` do
-    not accept a ``stream=...`` kwarg). Wrap compute ops in this context to
-    keep execution on CPU when desired.
-    """
-    return mx.stream(mx.cpu) if hasattr(mx, "stream") else nullcontext()
-
-
-def _svd_topk_direct(A: mx.array, r: int) -> Tuple[mx.array, mx.array, mx.array]:
-    """Compute top-``r`` factors using a direct SVD of ``A``.
-
-    Returns ``(U_r, s_r, Vh_r)`` where shapes are ``(m,r)``, ``(r,)``,
-    and ``(r,n)`` respectively.
-    """
-    with _cpu_stream():
-        U, s, Vh = mx.linalg.svd(A)
-    return U[:, :r], s[:r], Vh[:r, :]
-
-
-def randomized_svd(
-    A: mx.array,
-    r: int,
-    p: int = 8,
-    q: int = 1,
-    device_stream=None,
-    chunk_k: int | None = None,
-) -> Tuple[mx.array, mx.array, mx.array]:
-    """Randomized SVD for memory-friendly top-``r`` factorization.
-
-    Parameters
-    - A: 2D MLX array of shape (m, n)
-    - r: target rank (1..min(m, n))
-    - p: oversampling (default 8)
-    - q: power iterations (default 1); set to 0 to skip
-
-    Returns
-    - U_r, S_r, Vh_r such that ``A ≈ U_r @ diag(S_r) @ Vh_r``.
-
-    Algorithm
-    1) Draw a Gaussian test matrix ``Omega ∈ R^{n×k}``, where ``k=r+p``.
-    2) Form ``Y = A @ Omega`` and (optionally) perform ``q`` power iterations
-       ``Y = A @ (A.T @ Y)`` for spectral polishing.
-    3) Orthonormalize columns of ``Y`` via a thin SVD; let ``Q`` be its left
-       singular vectors with ``k`` columns.
-    4) Compute ``B = Q.T @ A`` (size ``k×n``) and SVD it as ``U_b, S, Vh``.
-    5) Lift left singular vectors: ``U = Q @ U_b`` and slice top-``r``.
-    """
-    if A.ndim != 2:
-        raise ValueError("A must be a 2D matrix")
-    m, n = A.shape
-    if not (1 <= r <= min(m, n)):
-        raise ValueError(f"r must be in [1, {min(m, n)}], got {r}")
-
-    k = int(min(m, n, max(r, 1) + max(p, 0)))
-
-    ctx = device_stream or _cpu_stream()
-    # Heuristic chunk size along the projection dimension to avoid long-running
-    # GPU kernels that can trip the macOS Metal watchdog (timeout). Small chunks
-    # keep command buffers short without materially changing math.
-    # Always at least 32, at most k.
-    # Allow caller to override chunk size; default to a conservative 64 to
-    # avoid long Metal command buffers on macOS.
-    if chunk_k is None or chunk_k <= 0:
-        chunk = max(32, min(64, int(k)))
-    else:
-        chunk = max(16, min(int(k), int(chunk_k)))
-
-    # 1) Random projection and optional power iterations on chosen device.
-    # Compute in chunks along the k dimension to bound single-kernel runtime.
-    with ctx:
-        Y_blocks = []
-        for j in range(0, int(k), chunk):
-            jj = min(int(k) - j, chunk)
-            Omega_j = mx.random.normal((n, jj))
-            Y_j = A @ Omega_j  # (m, jj)
-            for _ in range(max(0, q)):
-                Y_j = A @ (A.T @ Y_j)
-            Y_blocks.append(Y_j)
-        Y = mx.concatenate(Y_blocks, axis=1)  # (m, k)
-    # 3) SVD(Y) on CPU to avoid GPU unsupported op / huge workspace
-    with _cpu_stream():
-        Uy, _, _ = mx.linalg.svd(Y)
-    with ctx:
-        Q = Uy[:, :k]  # (m, k)
-        # 4) Project to reduced space. Build B in row-chunks to keep kernels small.
-        B_rows = []
-        for j in range(0, int(k), chunk):
-            jj = min(int(k) - j, chunk)
-            Qt_block = Q[:, j : j + jj].T  # (jj, m)
-            B_rows.append(Qt_block @ A)  # (jj, n)
-        B = mx.concatenate(B_rows, axis=0)  # (k, n)
-    # 4b) SVD(B) on CPU
-    with _cpu_stream():
-        Ub, s, Vh = mx.linalg.svd(B)
-    with ctx:
-        # 5) lift
-        U = Q @ Ub  # (m, k)
-
-    return U[:, :r], s[:r], Vh[:r, :]
-
-
-def factorized_lowrank(A: mx.array, r: int) -> Tuple[mx.array, mx.array, mx.array]:
-    """Return the top-``r`` factorization ``(U, S, Vh)`` of ``A``.
-
-    Uses a direct SVD for small matrices and randomized SVD above a size
-    threshold to reduce temporary workspace and avoid large GPU allocations.
-    """
-    if A.ndim != 2:
-        raise ValueError("A must be a 2D matrix")
-    m, n = A.shape
-    if not (1 <= r <= min(m, n)):
-        raise ValueError(f"r must be in [1, {min(m, n)}], got {r}")
-
-    # Heuristic: switch to rSVD when either dimension is large.
-    # This keeps tests deterministic on small shapes while improving stability
-    # and memory behavior for large matrices.
-    threshold = 1024
-    if max(m, n) >= threshold:
-        U_r, s_r, Vh_r = randomized_svd(A, r, p=8, q=1)
-    else:
-        U_r, s_r, Vh_r = _svd_topk_direct(A, r)
-    return U_r, s_r, Vh_r
-
-
-def svd_lowrank_randomized(
-    A: mx.array,
-    r: int,
-    n_oversamples: int = 8,
-    n_iter: int = 1,
-    device_stream=None,
-    chunk_k: int | None = None,
-) -> mx.array:
-    """Return ``A``'s rank-``r`` approximation using randomized SVD.
-
-    Convenience wrapper that reconstructs ``A_r`` directly. If ``device_stream``
-    is provided, heavy ops execute inside that context; otherwise a CPU stream
-    is used when available.
-    """
-    U, S, Vh = randomized_svd(
-        A,
-        r,
-        p=n_oversamples,
-        q=n_iter,
-        device_stream=device_stream,
-        chunk_k=chunk_k,
-    )
-    return (U * S[None, :]) @ Vh
-
-
-def svd_lowrank(A: mx.array, r: int) -> mx.array:
-    """Reconstruct the best rank-`r` approximation of `A` via SVD.
-
-    Uses `factorized_lowrank` and returns `U.T @ diag(S) @ Vh`.
-    """
-    U_r, s_r, Vh_r = factorized_lowrank(A, r)
-    # U from MLX is returned as (k, m) when sliced as above; ensure shapes
-    # We expect A ≈ (U_r^T * diag(s_r)) @ Vh_r
-    A_approx = (U_r * s_r[None, :]) @ Vh_r
-    return A_approx
 
 
 class RankLayer(nn.Module):
     """Linear layer with reversible low-rank residual factors.
 
-    W = W0 + U @ diag(S) @ V
+    W = W0 + U.T @ diag(S) @ V
 
     - `W0` is the frozen backbone.
     - `U`, `S`, `V` are the learnable low-rank factors, reversible and prunable.
@@ -208,6 +49,7 @@ class RankLayer(nn.Module):
             int,
             Tuple[mx.array, float, float, float, mx.array, float, float],
         ] = {}
+        self.freeze(recurse=False, keys=["W0", "sleep_dict"])
 
     @property
     def rank(self) -> int:
@@ -238,41 +80,9 @@ class RankLayer(nn.Module):
     def prune_rank(self, tol: float = 1e-4):
         if self.rank == 0:
             return
-        U, S, V = self.U, self.S, self.V
-        keep = S > tol
-        sleep_mask = ~keep
-        if sleep_mask.sum() == 0:
-            return
-        # store sleepers as quantized tuples
+        sleep_mask = ~(mx.abs(self.S) > tol)
         mask_raw = cast(List[Any], sleep_mask.tolist())
-        sleep_flags: List[bool] = [bool(v) for v in mask_raw]
-        sleep_indices = [i for i, flag in enumerate(sleep_flags) if flag]
-        for idx in sleep_indices:
-            u, s, v = U[idx], S[idx], V[idx]
-            q_u, mn_u, sc_u = quantise(u)
-            q_v, mn_v, sc_v = quantise(v)
-            self.sleep_dict[len(self.sleep_dict)] = (
-                q_u,
-                mn_u,
-                sc_u,
-                float(s),
-                q_v,
-                mn_v,
-                sc_v,
-            )
-        # trim kept components
-        keep_raw = cast(List[Any], keep.tolist())
-        keep_flags: List[bool] = [bool(v) for v in keep_raw]
-        keep_indices = [i for i, flag in enumerate(keep_flags) if flag]
-        if keep_indices:
-            self.U = mx.concatenate([U[i][None] for i in keep_indices])
-            self.S = mx.concatenate([S[i][None] for i in keep_indices])
-            self.V = mx.concatenate([V[i][None] for i in keep_indices])
-        else:
-            out, inn = self.W0.shape
-            self.U = mx.zeros((0, out))
-            self.S = mx.zeros((0,))
-            self.V = mx.zeros((0, inn))
+        self._park_components([i for i, flag in enumerate(mask_raw) if bool(flag)])
 
     def wake_rank(self, idx: int):
         q_u, mn_u, sc_u, s, q_v, mn_v, sc_v = self.sleep_dict.pop(idx)
@@ -293,15 +103,18 @@ class RankLayer(nn.Module):
         # indices of k smallest |S|
         order = mx.argsort(mx.abs(self.S))
         drop_raw = cast(List[Any], order[:k_drop].tolist())
-        drop_idx = [int(i) for i in drop_raw]
-        mask_list = [True] * self.rank
-        for idx in drop_idx:
-            mask_list[idx] = False
-        for idx in drop_idx:
+        self._park_components([int(i) for i in drop_raw])
+
+    def _park_components(self, indices: List[int]) -> None:
+        """Store selected factors once, preserving live order and sleeper IDs."""
+        if not indices:
+            return
+        next_id = max(self.sleep_dict, default=-1) + 1
+        for offset, idx in enumerate(indices):
             u, s, v = self.U[idx], self.S[idx], self.V[idx]
             q_u, mn_u, sc_u = quantise(u)
             q_v, mn_v, sc_v = quantise(v)
-            self.sleep_dict[len(self.sleep_dict)] = (
+            self.sleep_dict[next_id + offset] = (
                 q_u,
                 mn_u,
                 sc_u,
@@ -310,11 +123,13 @@ class RankLayer(nn.Module):
                 mn_v,
                 sc_v,
             )
-        keep_idx = [i for i, flag in enumerate(mask_list) if flag]
+        dropped = set(indices)
+        keep_idx = [i for i in range(self.rank) if i not in dropped]
         if keep_idx:
-            self.U = mx.concatenate([self.U[i][None] for i in keep_idx])
-            self.S = mx.concatenate([self.S[i][None] for i in keep_idx])
-            self.V = mx.concatenate([self.V[i][None] for i in keep_idx])
+            live = mx.array(keep_idx)
+            self.U = mx.take(self.U, live, axis=0)
+            self.S = mx.take(self.S, live, axis=0)
+            self.V = mx.take(self.V, live, axis=0)
         else:
             out, inn = self.W0.shape
             self.U = mx.zeros((0, out))
@@ -336,7 +151,7 @@ class PlasticBlock(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
     def __call__(self, x: mx.array) -> mx.array:
-        y = self.attn(x, x, x)[0]
+        y = self.attn(x, x, x)
         x = self.norm1(x + y)
         x = self.norm2(x + self.ff(x))
         return x

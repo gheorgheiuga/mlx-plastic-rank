@@ -1,34 +1,47 @@
 # Contributing
 
-Thank you for helping improve **mlx-plastic-rank**. This document summarizes local setup, workflow expectations, and quality gates for pull requests.
+The active prototype consists of low-rank mechanics, pack tools and experiment
+integrity. [DSN-20260905-04](codex/dsn/dsn-20260905-prototype-consolidation.md)
+defines the scope; [the runbook](codex/runbook.md) contains operator commands.
 
-## Local Setup
-- Python 3.13 is required. Create an optional virtual environment with `uv venv` then `source .venv/bin/activate`.
-- Install the project in editable mode: `uv pip install -e .`. Add compression extras when needed: `uv pip install -e '.[compress]'`.
-- Run `uv run python main.py` and `uv run python plastic_rank.py --steps 10` to confirm MLX works on your machine.
+## Local setup and checks
 
-## Development Workflow
-- Keep changes focused and incremental. Include before/after logs or CSV snippets for demos, benchmarks, or pack workflows.
-- Add or adapt tests whenever behavior changes. The suite lives under `tests/`; prefer deterministic seeds for MLX ops.
-- For design trade-offs or research-driven work, author a Decision Support Note (DSN) in `codex/dsn/` using `DSN-TEMPLATE.md`, and cross-link it from the PR description.
-- Avoid committing large binaries. Store generated packs and datasets outside the repo or ensure they remain git-ignored.
+Use Python 3.13 via `uv`, the pinned lockfile and the project-local `.venv`.
+Activation and global installs are unnecessary. Select optional dependencies
+with `--extra packs`, `--extra compress` or `--extra data` only when needed.
 
-## Quality Gates
-- Tests: `uv run pytest -q`
-- Targeted checks: `uv run pytest -q -k rank_layer` (rank heuristics) and `uv run pytest -q -k manager_adapters` (LoRA wrapping)
-- Static analysis: `uv run ruff check`
-- Type checking: `uv run mypy`
+```sh
+uv sync --locked
+uv run --locked python plastic_rank.py --steps 10
+uv run --locked ruff check
+uv run --locked mypy
+uv run --locked pytest -q
+```
 
-Run these commands before opening a pull request. If CI uncovers issues unique to Apple Silicon or MLX, document the resolution in the PR thread.
+The demo checks a bounded prune/restore cycle. Tests use synthetic models and
+local artifacts; passing them does not establish a real-model quality result.
+Use deterministic MLX seeds for numerical regressions. The default command runs
+`tests/core`, `tests/packs` and `tests/tools`. Parked research is explicit:
+`uv run --locked pytest -q tests/research`; use `uv run --locked pytest -q tests`
+for every suite. Run research checks when changing the research or shared
+mechanics it exercises. See [suite guidance](tests/README.md).
 
-## Commit & PR Guidelines
-- Write imperative commit subjects with a scope (e.g. `feat(rank): add prune threshold`, `fix(packs): guard alpha mismatch`).
-- Summaries should explain the rationale and highlight risks or follow-up work.
-- Pull requests should describe intent, link issues, and reference any supporting DSNs or research notes in `codex/`.
-- Confirm the demos (`main.py`, `plastic_rank.py`) and tests pass locally prior to requesting review.
+## Changes and decisions
 
-## Release Checklist
-- Update the version in `pyproject.toml`.
-- Ensure CI is green on the latest macOS/MLX runner.
-- Review `NOTICE.md` and `data/README.md` for dataset, model, and generated-artifact attribution.
-- Tag and publish: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+Keep changes focused, explain the resulting behavior, and include validation
+and material limitations. Use scoped imperative commit subjects. Avoid adding
+parallel entry points or generic frameworks for one-off experiments.
+
+Design/research changes need a DSN in `codex/dsn/`, a DSN-log update and a matching
+entry in `codex/decisions.md`, or an explicit Proposed/Experimental status.
+Separate an accepted engineering decision from evidence for scientific benefit.
+Name the test that would falsify or promote a hypothesis. The current next step
+is [baseline diagnosis](codex/dsn/dsn-20260905-baseline-validity-diagnostic.md);
+parked controllers are not an automatic implementation backlog.
+
+Preserve failed runs and content identities. Never overwrite historical outputs
+or reinterpret shared-seed results as matched initialization. Keep generated
+data, packs and checkpoints ignored; update `NOTICE.md` and generator metadata
+when changing artifact sources. See [data guidance](data/README.md).
+
+Release/version changes and publication are separate decisions after review.

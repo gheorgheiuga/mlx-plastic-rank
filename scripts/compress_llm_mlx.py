@@ -8,12 +8,27 @@ from typing import Any, cast
 
 import mlx.core as mx
 import numpy as np
-from huggingface_hub import snapshot_download
 from safetensors.numpy import load_file, save_file
-from tqdm import tqdm
 
 from mlx_plastic_rank.lowrank import svd_lowrank_randomized
 from mlx_plastic_rank.rank_select import choose_rank
+
+try:
+    from tqdm import tqdm
+except ModuleNotFoundError as exc:
+    if exc.name != "tqdm":
+        raise
+    tqdm = None
+
+
+def download_checkpoint(model_id: str) -> str:
+    """Load the optional Hub client only when downloading a checkpoint."""
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(
+        model_id,
+        allow_patterns=["*.safetensors", "tokenizer.*", "config.json", "generation_config.json"],
+    )
 
 
 def _cpu_stream() -> Any:
@@ -71,53 +86,34 @@ def mlx_svd_truncate(
 ) -> np.ndarray:
     """Return a rank-r approximation of A_np using MLX.
 
-    - "randomized": uses library rSVD with matmuls on `device` and CPU SVD steps.
-    - "full": computes a full SVD on the CPU stream and truncates.
+    - "randomized": uses compact library rSVD on either projection device.
+    - "full": computes an exact reduced NumPy SVD on CPU and truncates.
+    A failed GPU projection retries the same randomized algorithm on CPU.
     """
-    if device == "cpu":
+    if svd_kind == "full":
         return _numpy_svd_truncate(A_np, r)
+    if svd_kind != "randomized":
+        raise ValueError(f"Unknown SVD method: {svd_kind}")
 
-    stream = _device_stream(device)
-    # Randomized SVD path — compute on requested device, but ensure that any
-    # CPU fallback re-allocates the array on CPU instead of reusing a GPU array.
-    if svd_kind == "randomized":
+    def randomized_on(target: str) -> np.ndarray:
+        stream = _device_stream(target)
         with stream:
             A = mx.array(A_np, dtype=mx.float32)
-            try:
-                A_r = svd_lowrank_randomized(
-                    A,
-                    r,
-                    n_oversamples=oversamples,
-                    n_iter=iters,
-                    device_stream=stream,
-                    chunk_k=gpu_chunk_k,
-                )
-                mx.eval(A_r)
-                return np.array(A_r)
-            except Exception as e:
-                # Fallback to CPU on any GPU/Metal related error. Recreate the
-                # array on CPU to avoid cross-device ops which can crash MLX.
-                from tqdm import tqdm as _tqdm
-
-                _tqdm.write(f"[GPU->CPU fallback] rSVD failed on {device}: {e}")
-        # CPU fallback (fresh CPU allocation)
-        with _cpu_stream():
-            A_cpu = mx.array(A_np, dtype=mx.float32)
-            U, S, Vh = mx.linalg.svd(A_cpu)
-            U_r, S_r, Vh_r = U[:, :r], S[:r], Vh[:r, :]
-            A_r = (U_r * S_r[None, :]) @ Vh_r
+            A_r = svd_lowrank_randomized(
+                A, r, n_oversamples=oversamples, n_iter=iters,
+                device_stream=stream, chunk_k=gpu_chunk_k,
+            )
             mx.eval(A_r)
-        return np.array(A_r)
+            return np.array(A_r)
 
-    # Full SVD forced on CPU regardless of requested device (more stable and
-    # avoids large/unsupported GPU SVD workspaces). Always allocate on CPU.
-    with _cpu_stream():
-        A_cpu = mx.array(A_np, dtype=mx.float32)
-        U, S, Vh = mx.linalg.svd(A_cpu)
-        U_r, S_r, Vh_r = U[:, :r], S[:r], Vh[:r, :]
-        A_r = (U_r * S_r[None, :]) @ Vh_r
-        mx.eval(A_r)
-    return np.array(A_r)
+    try:
+        return randomized_on(device)
+    except Exception as exc:
+        if device != "gpu":
+            raise
+        print(f"[GPU->CPU fallback] rSVD failed on {device}: {exc}")
+    # Recreate the input on CPU; never increase the SVD to the full input size.
+    return randomized_on("cpu")
 
 
 def _file_contains_bf16(path: Path) -> bool:
@@ -161,7 +157,7 @@ def compress_safetensors_file(
     if _file_contains_bf16(in_path):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(in_path.read_bytes())
-        tqdm.write(f"[SKIP] {in_path.name}: contains BF16; copied as-is")
+        print(f"[SKIP] {in_path.name}: contains BF16; copied as-is")
         return 0, 0
     tensors = load_file(str(in_path))
     if existing is None and out_path.exists():
@@ -172,7 +168,7 @@ def compress_safetensors_file(
     names = list(tensors.keys())
     total = len(names)
     stop = total if end_index is None else min(end_index, total)
-    pbar = tqdm(names, desc=f"{in_path.name}", leave=False)
+    pbar = tqdm(names, desc=f"{in_path.name}", leave=False) if tqdm is not None else names
     for idx, name in enumerate(pbar):
         arr = tensors[name]
         if idx < start_index or idx >= stop:
@@ -220,7 +216,8 @@ def compress_safetensors_file(
             out[name] = arr_c
             changed += 1
             tag = " dev=cpu" if local_device != device else ""
-            pbar.set_postfix_str(f"shape={tuple(arr.shape)} r*={r}{tag}")
+            if hasattr(pbar, "set_postfix_str"):
+                pbar.set_postfix_str(f"shape={tuple(arr.shape)} r*={r}{tag}")
         else:
             if existing and name in existing:
                 out[name] = existing[name]
@@ -274,10 +271,7 @@ def main():
     args = ap.parse_args()
 
     target_energy = 1.0 - args.compress
-    src_dir = snapshot_download(
-        args.hf,
-        allow_patterns=["*.safetensors", "tokenizer.*", "config.json", "generation_config.json"],
-    )
+    src_dir = download_checkpoint(args.hf)
     src_dir = Path(src_dir)
     dst_dir = Path(args.out)
     dst_dir.mkdir(parents=True, exist_ok=True)
@@ -298,7 +292,7 @@ def main():
     changed_total = 0
     total_params = 0
     files = sorted(src_dir.glob("*.safetensors"))
-    for f in tqdm(files, desc="Files", position=0):
+    for f in (tqdm(files, desc="Files", position=0) if tqdm is not None else files):
         out_f = dst_dir / f.name
         batch_size = args.batch_size
         start = args.start_index
@@ -356,7 +350,7 @@ def main():
             del tensors
         changed_total += file_changed
         total_params += total if total is not None else 0
-        tqdm.write(f"[OK] {f.name}: compressed {file_changed} tensors")
+        print(f"[OK] {f.name}: compressed {file_changed} tensors")
 
     meta = {
         "strategy": args.strategy,

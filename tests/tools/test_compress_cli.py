@@ -6,6 +6,44 @@ import pytest
 mx = pytest.importorskip("mlx.core", reason="MLX not installed; skipping")
 
 
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+def test_randomized_compression_and_gpu_fallback_preserve_bounded_svd(monkeypatch, device):
+    from scripts import compress_llm_mlx as compress
+
+    def reject_full_numpy_svd(*args, **kwargs):
+        pytest.fail("A requested randomized factorization must not run a full NumPy SVD")
+
+    original_svd = mx.linalg.svd
+
+    def bounded_svd(matrix, *args, **kwargs):
+        assert max(matrix.shape) <= 12
+        return original_svd(matrix, *args, **kwargs)
+
+    monkeypatch.setattr(np.linalg, "svd", reject_full_numpy_svd)
+    monkeypatch.setattr(mx.linalg, "svd", bounded_svd)
+    failures = []
+    if device == "gpu":
+        real_qr = mx.linalg.qr
+
+        def fail_first_backend_call(matrix, *args, **kwargs):
+            if not failures:
+                failures.append(True)
+                raise RuntimeError("Simulated backend allocation failure")
+            return real_qr(matrix, *args, **kwargs)
+
+        monkeypatch.setattr(mx.linalg, "qr", fail_first_backend_call)
+    matrix = np.random.default_rng(4).normal(size=(96, 64)).astype(np.float32)
+
+    result = compress.mlx_svd_truncate(
+        matrix, 8, svd_kind="randomized", oversamples=4, iters=1, device=device,
+    )
+
+    assert result.shape == matrix.shape
+    assert np.isfinite(result).all()
+    assert np.linalg.norm(matrix - result) < np.linalg.norm(matrix)
+    assert bool(failures) == (device == "gpu")
+
+
 @pytest.mark.parametrize(
     "svd, device",
     [
@@ -25,7 +63,7 @@ def test_compress_cli_main(tmp_path, monkeypatch, svd, device):
     save_file({"dense": arr}, str(repo / "weights.safetensors"))
     (repo / "config.json").write_text("{}", encoding="utf-8")
 
-    monkeypatch.setattr(compress, "snapshot_download", lambda *args, **kwargs: str(repo))
+    monkeypatch.setattr(compress, "download_checkpoint", lambda model_id: str(repo))
 
     out_dir = tmp_path / "out"
     argv = [

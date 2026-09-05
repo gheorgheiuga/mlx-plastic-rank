@@ -25,7 +25,46 @@ The retained outputs are hash-bound, but that base revision and the nearest
 post-run source hashes cannot independently reconstruct or prove the exact
 uncommitted generator state.
 
+The September 2026 workflow regression fixture in `tests/packs/test_pack_workflow.py`
+uses locally authored synthetic JSONL and a tiny in-memory model, with temporary
+weights and reports confined to the test directory. It contains no third-party
+training examples or downloaded checkpoints. The updated fault-code generation
+helper records input and pack content identities in new output metadata; it does
+not change dataset attribution or retroactively modify existing artifacts. This
+implementation note does not update the upstream license check date above.
+
+`codex/evidence/svd_workspace_20260905.json` contains 18 measurements of locally
+generated Gaussian matrices, produced by `scripts/bench_svd_workspace.py` using
+seeds 42–44. It includes no external dataset, model weights, prompts or generated
+answers. Its metadata records matrix identities, source/generator hashes and
+environment versions; the comparison baseline is an earlier MIT-licensed
+revision of this repository. These are engineering measurements only.
+
+`codex/research/gradient-agreement/seed-audit.json` is a local inventory of seed
+fields and content hashes in retained synthetic experiment metadata. It contains
+no training examples, external dataset or checkpoint. The adjacent proposed
+protocol reuses the repository's synthetic task design and cites RigL and
+AdaLoRA as related research; it includes no copied third-party implementation.
+
+`codex/evidence/gradient_agreement_development_seed31_35.json` contains local
+development measurements, source/output identities and repeatability checks from
+`scripts/gradient_agreement_benchmark.py`. Its nine-condition matrix, synthetic
+arrays and source snapshots remain under ignored `out/capacity_migration/` paths.
+The generator writes the local synthetic origin, exact source bytes, environment,
+commands and hashes into each package. The committed summary is derived from
+those packages and records its audit method; it contains no external dataset or
+weights and makes no confirmatory claim. These notes do not update the upstream
+license check date above.
+
 ## External Datasets
+
+Prototype consolidation (2026-09-05) moves the existing extractors' optional
+`datasets` loader to the `data` extra. Their row construction, source/license
+metadata and split generation are unchanged; no data was regenerated. The new
+default lifecycle demo uses seeded synthetic residuals and prints only numerical
+checks, with no external data or model weights. The proposed dense baseline
+diagnostic has not generated an artifact. This does not refresh upstream license
+verification dates.
 
 - The fault-code pilot references the Hugging Face dataset
   `avneetsingla/industrial-fault-codes-sample`

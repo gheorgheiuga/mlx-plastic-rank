@@ -1,7 +1,7 @@
 [project]
 name = "mlx-plastic-rank"
 version = "0.1.1"
-description = "mlx-plastic-rank: experimental toolkit for adaptive low-rank layers and neuroplastic compression for Apple MLX"
+description = "MLX low-rank layers and adapter packs, with experimental capacity-migration research"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -11,9 +11,7 @@ requires-python = ">=3.13"
 dependencies = [
     "mlx>=0.20.0",
     "numpy",
-    "sympy",
     "safetensors",
-    "datasets",
 ]
 
 classifiers = [
@@ -21,6 +19,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+data = ["datasets"]
 # Extras for compression utilities and HF downloading
 compress = [
     "huggingface_hub>=0.23",
@@ -33,7 +32,7 @@ packs = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/core", "tests/packs", "tests/tools"]
 addopts = "-q"
 
 [project.scripts]

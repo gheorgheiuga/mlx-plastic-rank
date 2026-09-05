@@ -31,7 +31,7 @@ objects, logs, caches, backups, or residual copies in process memory.
 
 The implementation is in
 `src/mlx_plastic_rank/forgetting_vault.py`; focused behavioral and tamper tests
-are in `tests/test_forgetting_vault.py`.
+are in `tests/research/test_forgetting_vault.py`.
 
 ## Interface
 
@@ -196,7 +196,7 @@ verifiability or non-repudiation.
 From the repository root, run the focused test suite:
 
 ```bash
-uv run pytest -q tests/test_forgetting_vault.py
+uv run --locked pytest -q tests/research/test_forgetting_vault.py
 ```
 
 Run the stage narrative and produce self-contained evidence artifacts:

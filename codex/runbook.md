@@ -1,124 +1,96 @@
-# Codex Runbook — mlx-plastic-rank
+# Prototype runbook
 
-This runbook captures the working state of the project, the preferred workflows, and the current research tracks. Update it as experiments land.
+Current scope: [DSN-20260905-04](dsn/dsn-20260905-prototype-consolidation.md).
+The default workflow demonstrates low-rank mechanics. Model training is an
+optional workflow, and research admission remains blocked by failed controls.
 
-## Mission
-Deliver an MLX toolkit for adaptive, reversible low-rank compression. Keep the base checkpoint immutable while LoRA-style skill packs introduce domain skills, report rank/latency trade-offs, and remain easy to audit or roll back.
+## Environment and checks
 
-## Repository Snapshot (2025-09-20)
-- `src/mlx_plastic_rank/`: low-rank primitives, plasticity manager, rank selection, pack I/O
-- `packs/`: generated skill packs (SafeTensors `.lora.{A,B,alpha}` schema, ≤10 MB)
-- `scripts/`: compression demos (`compress_llm_mlx.py`), pack helpers (`demo_mlx_lm_pack.py`), benchmarks
-- `tests/`: pytest coverage for rank heuristics, LoRA wrappers, CLI smoke tests
-- `codex/`: ADRs, DSNs, research inbox, and this runbook
+Use the repository root, `.python-version`, `pyproject.toml`, `uv.lock` and a
+project-local `.venv`. Do not use a global Python installation or shell activation.
 
-## Core Commands
-- Bootstrap: `uv venv && uv pip install -e .` (add `uv pip install -e '.[packs]'` for packs CLI)
-- Demos: `uv run python main.py`, `uv run python plastic_rank.py --steps 10`
-- Modality stack check: `uv run --extra packs packs capabilities --check` verifies `mlx-lm`, `mlx-vlm`, and `mlx-audio`.
-- Gemma bake-off:
-  - Metadata/no-download: `uv run --extra packs python scripts/gemma4_smoke.py --metadata-only --out out/gemma4_smoke.json`
-  - Real mxfp8 smoke + alpha-zero pack probe: `uv run --extra packs python scripts/gemma4_smoke.py --models mlx-community/gemma-4-12B-mxfp8 --max-tokens 32 --noop-pack`
-  - IT QAT assistant smoke: `uv run --extra packs python scripts/gemma4_smoke.py --models mlx-community/gemma-4-12B-it-qat-mxfp8 --chat-template --max-tokens 32`
-  - Current mxfp8 smoke: local cache 12 GB, load 2.6-3.5s, generation about 31 tok/s at 8 tokens, peak about 12.73 GB, no-op pack 3.4 MB with matching deterministic output.
-  - Current IT QAT mxfp8 chat smoke: local cache 12 GB, warm load 2.8s, peak about 12.75 GB, coherent assistant response when `--chat-template` is used.
-- Packs workflow:
-  - Train: `uv run packs create --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --layers attn.q_proj,attn.k_proj,attn.v_proj --loader auto --rank-strategy gram_energy --target-compression 0.9 --steps 1000 --batch-size 2 --learning-rate 5e-5 --data data/domain_prompts.jsonl --lora-dropout 0.05`
-    - Gemma 4 unified any-to-any bases load through `mlx-vlm`; q ranks keep the requested capacity while grouped k/v ranks scale to the key/value head width. Add `attn.o_proj` only after checking pack size.
-  - Inspect: `uv run packs inspect --name domain-demo`
-  - Apply safely: `uv run packs apply --name domain-demo --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
-  - Evaluate: `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --data-path data/domain_prompts.jsonl --csv results.csv`
-  - Prove a DLC-style domain improvement from artifacts: `uv run packs proof --base mlx-community/gemma-4-12B-mxfp8 --pack domain-demo --domain my-domain --train-data data/domain_prompts.jsonl --eval-report results.json`
-  - Run a reproducible bakeoff spec: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json --dry-run`, then remove `--dry-run` for the long local run.
-  - Prompt/answer data: add `--loss-mode answer` to train/evaluate only assistant answer tokens. Use this for maintenance, diagnostic, and support-style packs where prompts are conditioning context.
-- IndustryBench pilot:
-  - Extract clean English Q/A text: `uv run python scripts/industrybench_extract.py --language en --source-limit 512 --train-size 128 --eval-size 32 --metadata-mode none --train-out data/industrybench_en_train.jsonl --eval-out data/industrybench_en_eval.jsonl`
-  - Baseline eval: `uv run --extra packs packs eval --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --data-path data/industrybench_en_eval.jsonl --chat-template --sequence-length 256 --num-samples 32 --batch-size 1 --out out/industrybench_gemma4_it_baseline.json --csv out/industrybench_gemma4_it_baseline.csv`
-  - Heavy no-shrink pack smoke: `uv run --extra packs packs create --name industrybench-en-gemma4-it-heavy-smoke --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/industrybench_en_train.jsonl --chat-template --steps 20 --batch-size 1 --sequence-length 256 --learning-rate 1e-5 --target-compression 0.7 --profile heavy`
-  - Result: exported/applied successfully, q/v rank 64, k rank 32, 91.75 MB. Held-out eval worsened PPL from 1125.20 to 1141.52 (+1.45%) and token accuracy from 0.28378 to 0.28342, so the run validates pack mechanics but not quality.
-- Industrial fault-code pilot:
-  - Dataset: `avneetsingla/industrial-fault-codes-sample` (3,000 English rows; `brand`, `code`, `description`, `solution`; `cc-by-nc-4.0`, research/prototyping only unless licensing is resolved).
-  - Extract: `uv run python scripts/fault_codes_extract.py --train-size 2400 --eval-size 300 --train-out data/fault_codes_train.jsonl --eval-out data/fault_codes_eval.jsonl`
-  - Baseline answer-only eval: `uv run --extra packs packs eval --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --data-path data/fault_codes_eval.jsonl --chat-template --loss-mode answer --sequence-length 256 --num-samples 300 --batch-size 4 --out out/fault_codes_gemma4_it_answer_baseline_300.json --csv out/fault_codes_gemma4_it_answer_baseline_300.csv`
-  - Rank-16 100-step pack: `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-r16-100 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 100 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 16 --profile heavy --lora-dropout 0.05`
-  - Best sweep pack: `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-r32-300 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 300 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 32 --profile heavy --lora-dropout 0.05`
-  - Generation check: `uv run --extra packs python scripts/fault_codes_generate_check.py --base mlx-community/gemma-4-12B-it-qat-mxfp8 --pack fault-codes-gemma4-it-answer-r32-300 --eval-data data/fault_codes_eval.jsonl --limit 8 --max-tokens 96 --temperature 0 --chat-template --out out/fault_codes_generation_r32_300_8.json --csv out/fault_codes_generation_r32_300_8.csv`
-  - Full 300-row sweep:
+```sh
+uv sync --locked
+uv run --locked python plastic_rank.py --steps 10
+uv run --locked ruff check
+uv run --locked mypy
+uv run --locked pytest -q
+```
 
-    | Pack | Size | Answer PPL | Delta | Token Acc. | Generation solution-overlap |
-    | --- | ---: | ---: | ---: | ---: | ---: |
-    | base | 0 MB | 15.4316 | 0.00% | 0.6155 | 0.2723 |
-    | r16 / 100 steps | 27.10 MB | 14.4647 | -6.27% | 0.6197 | not run |
-    | r16 / 300 steps | 27.10 MB | 11.6834 | -24.29% | 0.6311 | 0.2584 |
-    | r32 / 100 steps | 54.16 MB | 12.8972 | -16.42% | 0.6259 | not run |
-    | r32 / 300 steps | 54.16 MB | 8.5175 | -44.80% | 0.6513 | 0.3619 |
+The demo should report active ranks `4, 2, 4`, then hold at `4`, with dormant
+counts `0, 2, 0`. It measures restoration error against the residual, checks
+finite outputs and an unchanged backbone, and conserves four total components.
+Quantized restoration is approximate. This is not a learning benchmark.
 
-  - Historical 300-step sweep result: `fault-codes-gemma4-it-answer-r32-300` was the best quality pack in that sweep. The newer full-split 600-step result is tracked in `codex/evidence/fault_codes_full2700_fullscale_summary.json`.
-- Text-to-SQL replication:
-  - Dataset: `gretelai/synthetic_text_to_sql` (Apache-2.0; large train/test splits with `sql_context`, `sql_prompt`, and `sql` fields).
-  - Extract: `uv run python scripts/text_to_sql_extract.py --train-size 10000 --eval-size 1000 --train-out data/text_to_sql_train_10000.jsonl --eval-out data/text_to_sql_eval_1000.jsonl`
-  - Dry-run full bakeoff: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json --dry-run`
-  - Full bakeoff: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/text_to_sql_gemma4_it_fullscale.json`
-  - Promotion gate: the hetero/rank-map candidate must pass proof, beat fixed r16 on held-out PPL or token accuracy, retain at least 90% of fixed r32 improvement over base, and use at most 60% of fixed r32 adapter bytes.
-- Paired fault-code rank-placement screen:
-  - Run or resume: `uv run --extra packs packs bakeoff --spec codex/bakeoffs/fault_codes_paired_control_screen_seed42.json`
-  - Review snapshot: `codex/evidence/fault_codes_paired_control_screen_seed42.json`
-  - Result: the discovered map passed all single-seed gates, including 5/5 random controls and all structured controls. The normalized Text-to-SQL transplant was only 1.12% worse, so treat the result as evidence for useful placement with weak domain specificity, not theorem validation.
-- Rank ledger (rank-accounting instrumentation, not theorem validation):
-  - Inspect pack rank budget: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_ledger_r32_300.json --csv out/fault_codes_rank_ledger_r32_300.csv`
-  - Compare pack overlap/composition: `uv run packs rank-ledger --name fault-codes-gemma4-it-answer-r16-300 --compare fault-codes-gemma4-it-answer-r32-300 --out out/fault_codes_rank_compare_r16_300_vs_r32_300.json --csv out/fault_codes_rank_compare_r16_300_vs_r32_300.csv`
-  - First readout: `r32/300` has 136 adapters, declared rank 4352, effective rank 4352, zero rank slack, and 13,041 bytes per effective rank. Compared with `r16/300`, composition rank is additive (2176 + 4352 = 6528), rank savings is 0, row/column overlap is 0, and mean absolute Frobenius cosine is about 0.0097. The extra `r32` capacity is mostly new rank direction, not duplicated `r16` direction.
-- Dynamic Pop Rank:
-  - Train with gated active ranks: `uv run --extra packs packs create --name fault-codes-gemma4-it-answer-dynamic-r32-init4-300 --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 300 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --rank 32 --profile heavy --lora-dropout 0.05 --dynamic-rank --dynamic-initial-rank 4 --dynamic-rank-warmup 50 --dynamic-rank-interval 25 --dynamic-grow-threshold 0.25 --dynamic-prune-threshold 0.03`
-  - Meaning: `--rank` is the ceiling, not the exported rank. Adapters start at `--dynamic-initial-rank`; high-signal adapters grow along the allowed rank ladder; low-signal adapters stay small or shrink. Export writes only active rank columns.
-  - Status: implemented and unit-tested, not yet validated on a real Gemma fault-code run.
-- Pop polynomial probe:
-  - Toy identity check: `uv run python scripts/pop_polynomial_probe.py --spectral-notch low:2 --out out/pop_polynomial_probe_toy.json`
-  - Generate the automatic spectral-key rank map from the all-layer q/k/v spectral probes: `uv run --extra packs packs rank-map spectral --source-pack fault-codes-gemma4-it-answer-hetero-r32-init8-min4-map-600 --q-spectral out/pop_poly_q_all_layers_low_mid_high_seed5.json --k-spectral out/pop_poly_k_all_layers_low_mid_high_seed5.json --v-spectral out/pop_poly_v_all_layers_low_mid_high_seed5.json --profile heavy --out out/pop_poly_rank_map_spectral_auto_balanced.json`
-  - Train a standalone spectral-key candidate map: `uv run --extra packs packs create --name spectral-key-candidate --base mlx-community/gemma-4-12B-it-qat-mxfp8 --loader mlx-vlm --layers attn.q_proj,attn.k_proj,attn.v_proj --rank-map-json out/pop_poly_spectral_key_rank_map_candidate.json --data data/fault_codes_train.jsonl --chat-template --loss-mode answer --steps 600 --batch-size 1 --sequence-length 256 --learning-rate 5e-5 --profile heavy --lora-dropout 0.05`
-  - Generate the DLC proof report: `uv run --extra packs packs proof --base mlx-community/gemma-4-12B-it-qat-mxfp8 --pack spectral-key-candidate --domain industrial-fault-codes --train-data data/fault_codes_train.jsonl --eval-data data/fault_codes_eval.jsonl --eval-report out/fault_codes_gemma4_it_answer_spectral_key_candidate_eval_300.json --generation-report out/fault_codes_generation_spectral_key_candidate_8.json --ledger-report out/fault_codes_rank_ledger_spectral_key_candidate.json --require-generation --require-ledger --fail-on-regression --out out/fault_codes_domain_pack_proof_spectral_key_candidate.json`
-  - Result: `spectral-key-candidate` exported at 27.38 MB with 2,316 effective rank, PPL 5.7641, token accuracy 0.6786, and generation solution-overlap 0.3911. It slightly beats the current hetero map at equal size on held-out PPL/accuracy and matches its generation overlap, but fixed `r32/600` remains best absolute quality at 54.16 MB.
-  - Proof: `out/fault_codes_domain_pack_proof_spectral_key_candidate.json` passes all gates for the local industrial fault-code domain: pack artifact exists, training/eval data exist, attach changes logits, answer-token PPL and token accuracy improve, generation keyword overlap improves, and rank ledger shows active adapter capacity.
-- Compression baseline: `uv run python scripts/compress_llm_mlx.py --hf mlx-community/gemma-4-12B-mxfp8 --out out/gemma4_mxfp8_compressed --svd randomized --batch-size 20`
-- QA: `uv run pytest -q`, `uv run ruff check`, `uv run mypy`
+The default test command covers core, packs and utilities. Parked research runs
+only when requested with `uv run --locked pytest -q tests/research`. Use
+`uv run --locked pytest -q tests` for every suite, especially after changes to
+shared numerical/state machinery. [Suite guidance](../tests/README.md).
 
-## Implementation Principles
-- Python 3.13 + MLX arrays for heavy math; seed RNG for reproducible tests.
-- Base checkpoints stay immutable; only LoRA packs mutate runtime state.
-- Default any-to-any base is `mlx-community/gemma-4-12B-mxfp8`; keep `mlx-community/gemma-4-12B-bf16` for reference comparisons when memory allows.
-- Treat `mlx-vlm` as the Gemma unified image/audio/video runtime, and `mlx-audio` as the dedicated TTS/STT/STS speech IO layer around the pack system.
-- Initialize LoRA train adapters with `B ~ N(0, 1/sqrt(input_dim))` and zero `A`; the earlier `1/input_dim` scale made short answer-only Gemma pilots quantize to no-op deltas.
-- Enforce guardrails: attention ranks ≤8 by default, alpha = 2r unless overridden, packs store only `.lora.{A,B,alpha}` tensors, lite size cap 10 MB, heavy profile for larger SSD-loaded packs, base hash must match on apply.
-- Log rank/alpha/dropout values whenever packs initialize or attach.
-- Prefer deterministic kernels in demos so metrics compare cleanly.
+Tests exercise synthetic models and local artifacts without downloading a base
+checkpoint. MLX execution needs access to Apple Metal; a sandbox failing to
+initialize Metal is an environment failure, not a numerical test result.
 
-## Active Tracks
-1. **First production pack** – curate `data/domain_prompts.jsonl`, sweep `r_q ∈ {4,8}` (k/v down-rank automatically), `steps ∈ {500,1000,1500}`, evaluate on the base validation set plus the domain corpus, log CSV (`pack_name,layers,rank_map,alpha,size_MB,load_ms,vram_GB,tps,ppl_base,ppl_pack,ppl_delta_pct,domain_metric`). Target ≤10 % general perplexity delta.
-2. **Ablations** – compare layer sets (`qv`, `qkv`, `qkv+out_proj`), rank maps (mixed q/k/v), dropout sweeps (`0.0,0.05,0.1`). Capture outcomes in the same CSV schema.
-3. **Path-B export** – implement `packs from-delta` to turn finetuned checkpoints into LoRA packs via ΔW SVD; evaluate with Track 1 metrics.
-4. **Reporting**
-    - Job demo r4 (rank_q=4, kv=4): pack 3.83 MB; eval @100 prompts seq128 → PPL 11.58 (+0.09%), TPS 1.13k (-1.4%), token accuracy 0.527; batch eval (bs32 seq256) → PPL Δ +0.01%, TPS loss 7.2%, pack size <6 MB.
-    - Job demo r8 (rank_q=8, kv=8): pack 7.62 MB; eval @100 prompts seq128 → PPL 11.58 (+0.22%), TPS 0.79k (-0.4%), token accuracy 0.527; batch eval (bs32 seq256) → PPL Δ +0.002%, TPS loss 7.1%, pack size <12 MB. – once experiments stabilize, surface results in README (tables/plots) and link datasets/packs in `codex/dsn/`.
+## Pack workflow
 
-## Testing & Benchmarks
-- Unit coverage: `uv run pytest -q`
-- Focused: `uv run pytest -q -k manager_adapters`, `uv run pytest -q -k rank_layer`
-- Perf sanity: `uv run python scripts/bench_memory.py --m 2048 --n 512`
-- Pack smoke test (manual for now):
-  - `uv run packs inspect --name noop`
-  - `uv run packs apply --name noop --base mlx-community/gemma-4-12B-mxfp8 --dry-run`
-  - `uv run packs eval --base mlx-community/gemma-4-12B-mxfp8 --pack noop --data-path data/domain_prompts.jsonl --csv eval_noop.csv`
-  - `uv run packs eval-batch --base mlx-community/gemma-4-12B-mxfp8 --pack noop --input data/domain_prompts.jsonl --batch-size 8,16,32 --sequence-length 256 --thinking strip`
+Use an existing compatible local checkpoint, choose its loader and projection
+names, and prepare disjoint JSONL splits. These example paths are placeholders;
+this workflow is not run by the default demo. Keep training/evaluation loss mode,
+sequence length and chat-template settings aligned.
 
-## Research Inbox Guidance
-Log new papers or experiments under “Research Inbox” below using the template. When an entry drives a decision, add an ADR in `codex/decisions.md` or a DSN and reference it from the PR.
+```sh
+uv run --locked --extra packs packs create \
+  --name domain-demo --base /path/to/checkpoint --loader auto \
+  --layers attn.q_proj,attn.k_proj,attn.v_proj --rank 8 \
+  --initialization component-v1 --seed 42 --steps 100 \
+  --data data/domain_train.jsonl
+uv run --locked packs inspect --name domain-demo
+uv run --locked --extra packs packs apply \
+  --name domain-demo --base /path/to/checkpoint --dry-run
+uv run --locked --extra packs packs eval \
+  --base /path/to/checkpoint --pack domain-demo \
+  --data-path data/domain_eval.jsonl --out out/domain_eval.json
+uv run --locked packs proof \
+  --base /path/to/checkpoint --pack domain-demo --domain domain-demo \
+  --train-data data/domain_train.jsonl --eval-data data/domain_eval.jsonl \
+  --eval-report out/domain_eval.json --out out/domain_proof.json
+```
 
-### Research Inbox
-- Template:
-  - Citation/DOI:
-  - Link:
-  - Key idea (2–4 bullets):
-  - Impacted files/modules:
-  - Open questions / risks:
+A proof pass is conditional on measured improvement and the report's other
+checks; this recipe does not promise one. See [integrity requirements](../docs/experiment_integrity.md).
+Use `packs bakeoff --help` for orchestration and `packs route --help` for optional
+domain routing. The CLI is the single pack entry point. A fresh `uv run` without
+an extra returns the environment to the minimal dependency set; specify `--extra
+packs` on each model-backed invocation.
 
-Keep this section lightweight—no PDFs or large datasets in the repo.
+## Optional utilities
+
+| Need | Invocation |
+| --- | --- |
+| Model loaders/training | `uv run --locked --extra packs packs …` |
+| Checkpoint download/compression | `uv run --locked --extra compress python scripts/compress_llm_mlx.py …` |
+| Dataset extraction through `datasets` | `uv run --locked --extra data python scripts/text_to_sql_extract.py …` |
+| Fault-code extraction through `datasets` | `uv run --locked --extra data python scripts/fault_codes_extract.py …` |
+| Rank/byte accounting on local packs | `uv run --locked packs rank-ledger --help` |
+
+The fault-code dataset-viewer path uses the standard library and can run without
+the data extra. Generated examples preserve source/license metadata; see
+[the data README](../data/README.md). No symbolic algebra dependency is required.
+
+## Research handoff
+
+Start with the [proposed baseline diagnostic](dsn/dsn-20260905-baseline-validity-diagnostic.md),
+not another controller sweep. Its output should decide whether the next change
+belongs in data coverage, numerical conditioning or factorized optimization.
+Keep this diagnosis distinct from an equal-budget controller comparison.
+
+Historical development replay is documented with its artifacts in
+[gradient-agreement results](research/gradient-agreement/development-results.md).
+Its validity failure is expected; do not lower thresholds to make it pass.
+Snapshots preserve the old source and lockfile. Replaying today's source is a
+new run, not a byte-identical reproduction of a historical environment.
+
+The [parking lot](parking-lot.md) names return triggers. Do not resume a parked
+track or consume reserved seeds merely because its script remains runnable.
+For new scope, update the DSN, [DSN log](dsn/dsn-log.md) and
+[canonical decision index](decisions.md) together.

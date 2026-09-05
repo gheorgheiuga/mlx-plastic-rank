@@ -2,6 +2,11 @@
 
 Date: 2026-06-21
 
+**Historical snapshot.** This audit predates the September correctness repairs,
+dependency cleanup and retired demos. Its paths and backlog are not current
+instructions. Use [the consolidation DSN](../codex/dsn/dsn-20260905-prototype-consolidation.md)
+and [current runbook](../codex/runbook.md) for active scope and commands.
+
 Scope: current repository state only. This is an audit and implementation plan; it does not change training, evaluation, rank-map, or experiment code.
 
 ## 1. Current training entrypoints

@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import mlx.core as mx
-from huggingface_hub import model_info, snapshot_download
 
 from mlx_plastic_rank.packs.io import save_pack, save_pack_metadata
 from mlx_plastic_rank.packs.manager import LoRAManager, PackApplicationError
@@ -78,6 +77,8 @@ def parse_csv(raw: str | None) -> list[str]:
 
 
 def repo_summary(model: str) -> RepoSummary:
+    from huggingface_hub import model_info
+
     info = model_info(model, files_metadata=True)
     siblings = getattr(info, "siblings", []) or []
     total_bytes = sum((getattr(sibling, "size", None) or 0) for sibling in siblings)
@@ -120,12 +121,14 @@ def load_prompts(path: Path | None) -> list[str]:
 def load_vlm_model(model_ref: str, *, local_files_only: bool = False):
     from mlx_vlm import load
 
-    snapshot_path = snapshot_download(model_ref, local_files_only=local_files_only)
+    snapshot_path = resolve_snapshot(model_ref, local_files_only=local_files_only)
     loaded = load(snapshot_path)
     return loaded[0], loaded[1]
 
 
 def resolve_snapshot(model_ref: str, *, local_files_only: bool = False) -> str:
+    from huggingface_hub import snapshot_download
+
     return snapshot_download(model_ref, local_files_only=local_files_only)
 
 
